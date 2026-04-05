@@ -103,10 +103,10 @@ export default function SetupOrg() {
               <Icon icon="lucide:building-2" className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50">
-              Set up your organization
+              Set up your workspace
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mt-2">
-              Create a new organization or ask your admin to add you
+              Create your organization to get started. You'll be the admin.
             </p>
           </div>
 
@@ -126,20 +126,6 @@ export default function SetupOrg() {
                 </p>
               </div>
               <Icon icon="lucide:chevron-right" className="w-5 h-5 text-gray-400 ml-auto" />
-            </div>
-          </Card>
-
-          <Card className="opacity-60">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                <Icon icon="lucide:user-plus" className="w-6 h-6 text-gray-500" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900 dark:text-gray-50">Join Organization</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Ask your org admin to add your email as a member
-                </p>
-              </div>
             </div>
           </Card>
         </div>

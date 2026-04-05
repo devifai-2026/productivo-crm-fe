@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { format, parseISO } from 'date-fns';
 import useInvoiceStore from '../store/invoiceStore';
+import useWhatsappAddonStore from '../store/whatsappAddonStore';
 import { invoiceAPI, paymentAccountAPI } from '../services/api';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
@@ -34,6 +35,7 @@ export default function InvoiceDetail({ onMenuClick }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentInvoice, isLoading, fetchInvoice, updateInvoice, clearCurrent } = useInvoiceStore();
+  const { isActive: waActive, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendCC, setSendCC] = useState('');
@@ -67,6 +69,7 @@ export default function InvoiceDetail({ onMenuClick }) {
       const data = res.data?.data || res.data || [];
       setPaymentAccounts(Array.isArray(data) ? data : []);
     }).catch(() => {});
+    if (!waFetched) fetchWaAddon();
     return () => clearCurrent();
   }, [id]);
 
@@ -1022,7 +1025,7 @@ export default function InvoiceDetail({ onMenuClick }) {
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Send this invoice via Email and WhatsApp to the client.
+            Send this invoice via Email{waActive ? ' and WhatsApp' : ''} to the client.
           </p>
           {client && (
             <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50">

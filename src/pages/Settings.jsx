@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
+import toast from 'react-hot-toast';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
 import { authAPI, categoryAPI, organizationAPI } from '../services/api';
@@ -11,7 +12,7 @@ import Avatar from '../components/ui/Avatar';
 import Modal from '../components/ui/Modal';
 
 export default function Settings({ onMenuClick }) {
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const { isDark, mode, setMode } = useThemeStore();
 
   const [categories, setCategories] = useState([]);
@@ -21,6 +22,9 @@ export default function Settings({ onMenuClick }) {
   const [mpinConfirm, setMpinConfirm] = useState('');
   const [mpinError, setMpinError] = useState('');
   const [mpinLoading, setMpinLoading] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -71,6 +75,19 @@ export default function Settings({ onMenuClick }) {
       setMpinError(err.response?.data?.message || 'Failed to set MPIN');
     }
     setMpinLoading(false);
+  };
+
+  const handleDeleteOwnAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') return;
+    setDeletingAccount(true);
+    try {
+      await authAPI.deleteOwnAccount();
+      toast.success('Your account and all data have been deleted.');
+      logout();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to delete account.');
+    }
+    setDeletingAccount(false);
   };
 
   const themeOptions = [
@@ -178,6 +195,29 @@ export default function Settings({ onMenuClick }) {
           </div>
         </Card>
 
+        {/* Danger Zone — superadmin only */}
+        {user?.role === 'superadmin' && (
+          <Card className="border border-red-200 dark:border-red-900">
+            <h3 className="text-base font-semibold text-red-600 dark:text-red-400 mb-1">Danger Zone</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Permanently deletes your account, organisation, and all associated data. This cannot be undone.
+            </p>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900">
+              <div>
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Delete my account</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Removes all users, projects, clients, invoices and more.</p>
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => { setDeleteConfirmText(''); setShowDeleteAccountModal(true); }}
+              >
+                Delete Account
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* Categories */}
         <Card>
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -231,6 +271,44 @@ export default function Settings({ onMenuClick }) {
           </div>
         </Card>
       </div>
+
+      {/* Delete Account Modal */}
+      <Modal
+        isOpen={showDeleteAccountModal}
+        onClose={() => setShowDeleteAccountModal(false)}
+        title="Delete Account Permanently"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+            <p className="text-sm font-semibold text-red-700 dark:text-red-300">This will permanently delete:</p>
+            <ul className="text-xs text-red-600 dark:text-red-400 mt-1 space-y-0.5 list-disc list-inside">
+              <li>Your account and all org members</li>
+              <li>All organisations, clients, projects, tasks</li>
+              <li>All invoices, meetings, activity logs</li>
+            </ul>
+          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Type <strong>DELETE</strong> to confirm:
+          </p>
+          <Input
+            placeholder="Type DELETE to confirm"
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+          />
+          <div className="flex gap-3 justify-end pt-1">
+            <Button variant="outline" onClick={() => setShowDeleteAccountModal(false)}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={handleDeleteOwnAccount}
+              loading={deletingAccount}
+              disabled={deleteConfirmText !== 'DELETE'}
+            >
+              Delete Everything
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* MPIN Modal */}
       <Modal

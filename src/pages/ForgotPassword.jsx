@@ -29,8 +29,8 @@ function EmailStep({ onNext }) {
       await authAPI.forgotPassword({ email: email.toLowerCase().trim() });
       toast.success('OTP sent! Check your inbox.');
       onNext(email.toLowerCase().trim());
-    } catch {
-      toast.error('Failed to send OTP. Please try again.');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send OTP. Please try again.');
     }
     setLoading(false);
   };
@@ -42,7 +42,7 @@ function EmailStep({ onNext }) {
           <Icon icon="lucide:mail" className="w-6 h-6 text-blue-600 dark:text-blue-400" />
         </div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Find your account</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Enter your email and we'll send a 6-digit OTP</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Enter your email and we'll send a 4-digit OTP</p>
       </div>
       <Input
         label="Email Address"
@@ -60,7 +60,7 @@ function EmailStep({ onNext }) {
 
 // Step 2: Enter OTP
 function OtpStep({ email, onNext, onBack }) {
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [otp, setOtp] = useState(['', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -72,7 +72,7 @@ function OtpStep({ email, onNext, onBack }) {
     next[i] = val;
     setOtp(next);
     setError('');
-    if (val && i < 5) inputs.current[i + 1]?.focus();
+    if (val && i < 3) inputs.current[i + 1]?.focus();
   };
 
   const handleKeyDown = (i, e) => {
@@ -80,10 +80,10 @@ function OtpStep({ email, onNext, onBack }) {
   };
 
   const handlePaste = (e) => {
-    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (text.length === 6) {
+    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    if (text.length === 4) {
       setOtp(text.split(''));
-      inputs.current[5]?.focus();
+      inputs.current[3]?.focus();
     }
     e.preventDefault();
   };
@@ -91,7 +91,7 @@ function OtpStep({ email, onNext, onBack }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const code = otp.join('');
-    if (code.length < 6) { setError('Please enter the 6-digit OTP'); return; }
+    if (code.length < 4) { setError('Please enter the 4-digit OTP'); return; }
     setLoading(true);
     try {
       await authAPI.verifyOtp({ email, otp: code });
@@ -108,7 +108,7 @@ function OtpStep({ email, onNext, onBack }) {
     try {
       await authAPI.forgotPassword({ email });
       toast.success('New OTP sent!');
-      setOtp(['', '', '', '', '', '']);
+      setOtp(['', '', '', '']);
       setError('');
       inputs.current[0]?.focus();
     } catch {
@@ -125,7 +125,7 @@ function OtpStep({ email, onNext, onBack }) {
         </div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Enter OTP</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          We sent a 6-digit code to <span className="font-medium text-gray-700 dark:text-gray-300">{email}</span>
+          We sent a 4-digit code to <span className="font-medium text-gray-700 dark:text-gray-300">{email}</span>
         </p>
       </div>
 
@@ -279,7 +279,7 @@ export default function ForgotPassword() {
             <Icon icon="lucide:zap" className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50 tracking-tight">Forgot password?</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5">We'll help you reset it via email OTP</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5">We'll send a 4-digit OTP to your email</p>
         </div>
 
         {/* Progress dots */}

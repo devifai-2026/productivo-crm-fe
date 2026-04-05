@@ -1,16 +1,13 @@
 import { create } from 'zustand';
 import { taskAPI } from '../services/api';
+import { registerStoreReset } from './authStore';
 
-const useTaskStore = create((set, get) => ({
-  tasks: [],
-  currentTask: null,
-  isLoading: false,
-  error: null,
-  filters: {
-    status: '',
-    priority: '',
-    search: '',
-  },
+const initialState = { tasks: [], currentTask: null, isLoading: false, error: null, filters: { status: '', priority: '', search: '' } };
+
+const useTaskStore = create((set, get) => {
+  registerStoreReset(() => set(initialState));
+  return {
+  ...initialState,
 
   setFilters: (filters) =>
     set((state) => ({ filters: { ...state.filters, ...filters } })),
@@ -83,6 +80,7 @@ const useTaskStore = create((set, get) => ({
   },
 
   clearCurrent: () => set({ currentTask: null }),
-}));
+  };
+});
 
 export default useTaskStore;

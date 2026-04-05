@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import { organizationAPI } from '../services/api';
+import { registerStoreReset } from './authStore';
 
-const useOrganizationStore = create((set) => ({
-  organizations: [],
-  currentOrg: null,
-  isLoading: false,
+const initialState = { organizations: [], currentOrg: null, isLoading: false };
+
+const useOrganizationStore = create((set) => {
+  registerStoreReset(() => set(initialState));
+  return {
+  ...initialState,
 
   fetchOrganizations: async () => {
     set({ isLoading: true });
@@ -64,6 +67,7 @@ const useOrganizationStore = create((set) => ({
       return { success: false, error: err.response?.data?.error || 'Failed to delete organization' };
     }
   },
-}));
+  };
+});
 
 export default useOrganizationStore;

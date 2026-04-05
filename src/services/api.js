@@ -3,7 +3,10 @@ import api from '../config/api';
 export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   signup: (data) => api.post('/auth/register', data),
+  signupRequestOtp: (data) => api.post('/auth/signup/request-otp', data),
+  signupVerifyOtp: (data) => api.post('/auth/signup/verify-otp', data),
   getProfile: () => api.get('/auth/profile'),
+  getSubscription: () => api.get('/subscription'),
   updateProfile: (data) => api.put('/auth/profile', data),
   setupBiometric: (data) => api.put('/auth/biometric', data),
   setupMpin: (data) => api.post('/auth/mpin/setup', data),
@@ -11,6 +14,7 @@ export const authAPI = {
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   verifyOtp: (data) => api.post('/auth/verify-otp', data),
   resetPassword: (data) => api.post('/auth/reset-password', data),
+  deleteOwnAccount: () => api.delete('/auth/account'),
 };
 
 export const taskAPI = {
@@ -88,6 +92,7 @@ export const organizationAPI = {
   getMembers: (id) => api.get(`/organizations/${id}/members`),
   addMember: (id, data) => api.post(`/organizations/${id}/members`, data),
   removeMember: (orgId, userId) => api.delete(`/organizations/${orgId}/members/${userId}`),
+  updateInvoicePermission: (id, canViewInvoices) => api.patch(`/organizations/${id}/invoice-permission`, { canViewInvoices }),
 };
 
 export const userAPI = {
@@ -138,12 +143,31 @@ export const projectMembersAPI = {
 };
 
 export const superAdminAPI = {
+  getUsers: (params) => api.get('/superadmin/users', { params }),
   getOverview: () => api.get('/superadmin/overview'),
   getLogs: (params) => api.get('/superadmin/logs', { params }),
+  getPayments: (params) => api.get('/superadmin/payments', { params }),
+  blockAccount: (id) => api.patch(`/superadmin/accounts/${id}/block`),
+  deleteAccount: (id) => api.delete(`/superadmin/accounts/${id}`),
 };
 
 export const locationAPI = {
   getStates: () => api.get('/location/states'),
   getCities: (stateIso2) => api.get(`/location/cities/${stateIso2}`),
   getUsage: () => api.get('/location/usage'),
+};
+
+export const enquiryAPI = {
+  getAll: (params) => api.get('/enquiries', { params }),
+  update: (id, data) => api.patch(`/enquiries/${id}`, data),
+  submitPremium: (data) => api.post('/enquiries/premium', data),
+};
+
+export const featureFlagAPI = {
+  // Any org member: check own WA addon status
+  getMyWhatsapp: () => api.get('/feature-flags/whatsapp/me'),
+  // product_owner: manage WA flags for all superadmins
+  listWhatsapp: () => api.get('/feature-flags/whatsapp'),
+  getWhatsapp: (superadminId) => api.get(`/feature-flags/whatsapp/${superadminId}`),
+  setWhatsapp: (superadminId, data) => api.put(`/feature-flags/whatsapp/${superadminId}`, data),
 };

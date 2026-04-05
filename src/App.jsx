@@ -39,6 +39,10 @@ import UserDetail from './pages/UserDetail';
 import Conversations from './pages/Conversations';
 import SuperAdminPanel from './pages/SuperAdminPanel';
 import ForgotPassword from './pages/ForgotPassword';
+import Enquiries from './pages/Enquiries';
+import PremiumFeatures from './pages/PremiumFeatures';
+import MyPlan from './pages/MyPlan';
+import NotFound from './pages/NotFound';
 
 function LoadingScreen() {
   return (
@@ -61,8 +65,18 @@ function OrgRoute({ children }) {
   const location = useLocation();
   if (!isInitialized) return <LoadingScreen />;
   if (!token) return <Navigate to="/login" state={{ from: location }} replace />;
-  // Superadmin doesn't need an org — they own the platform
-  if (user?.role !== 'superadmin' && !user?.organizationId) return <Navigate to="/setup-org" replace />;
+  // product_owner doesn't need an org — they own the platform
+  // superadmin (paid client) MUST create an org before proceeding
+  if (user?.role !== 'product_owner' && !user?.organizationId) return <Navigate to="/setup-org" replace />;
+  return children;
+}
+
+function ProductOwnerRoute({ children }) {
+  const { token, user, isInitialized } = useAuthStore();
+  const location = useLocation();
+  if (!isInitialized) return <LoadingScreen />;
+  if (!token) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (user?.role !== 'product_owner') return <Navigate to="/" replace />;
   return children;
 }
 
@@ -73,10 +87,23 @@ function AuthRoute({ children }) {
   return children;
 }
 
+// Redirects free-plan superadmins to /premium when they try to access pro-only routes.
+// product_owner, org_admin, employee and paid plans pass through freely.
+function PlanRoute({ children }) {
+  const { user, subscriptionPlan } = useAuthStore();
+  if (user?.role === 'superadmin') {
+    const isPro = subscriptionPlan === 'pro' || subscriptionPlan === 'enterprise';
+    if (!isPro) return <Navigate to="/plan" replace />;
+  }
+  return children;
+}
+
 function AppRoutes() {
+  const { user } = useAuthStore();
   return (
     <Routes>
       <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
+      <Route path="/signup" element={<AuthRoute><Signup /></AuthRoute>} />
       <Route path="/forgot-password" element={<AuthRoute><ForgotPassword /></AuthRoute>} />
       <Route path="/setup-org" element={<ProtectedRoute><SetupOrg /></ProtectedRoute>} />
 
@@ -104,28 +131,51 @@ function AppRoutes() {
                   <Route path="/clients/:id" element={<ClientDetail onMenuClick={onMenuClick} />} />
                   <Route path="/clients/:id/edit" element={<EditClient onMenuClick={onMenuClick} />} />
 
-                  <Route path="/meetings" element={<Meetings onMenuClick={onMenuClick} />} />
-                  <Route path="/meetings/new" element={<CreateMeeting onMenuClick={onMenuClick} />} />
-                  <Route path="/meetings/:id" element={<MeetingDetail onMenuClick={onMenuClick} />} />
+                  {/* Pro-only routes — free superadmins redirected to /premium */}
+                  <Route path="/meetings" element={<PlanRoute><Meetings onMenuClick={onMenuClick} /></PlanRoute>} />
+                  <Route path="/meetings/new" element={<PlanRoute><CreateMeeting onMenuClick={onMenuClick} /></PlanRoute>} />
+                  <Route path="/meetings/:id" element={<PlanRoute><MeetingDetail onMenuClick={onMenuClick} /></PlanRoute>} />
 
-                  <Route path="/invoices" element={<Invoices onMenuClick={onMenuClick} />} />
-                  <Route path="/invoices/new" element={<CreateInvoice onMenuClick={onMenuClick} />} />
-                  <Route path="/invoices/:id" element={<InvoiceDetail onMenuClick={onMenuClick} />} />
-                  <Route path="/invoices/:id/edit" element={<EditInvoice onMenuClick={onMenuClick} />} />
+                  <Route path="/invoices" element={
+                    user?.role === 'product_owner' ? <Navigate to="/" replace /> : <Invoices onMenuClick={onMenuClick} />
+                  } />
+                  <Route path="/invoices/new" element={
+                    user?.role === 'product_owner' ? <Navigate to="/" replace /> : <CreateInvoice onMenuClick={onMenuClick} />
+                  } />
+                  <Route path="/invoices/:id" element={
+                    user?.role === 'product_owner' ? <Navigate to="/" replace /> : <InvoiceDetail onMenuClick={onMenuClick} />
+                  } />
+                  <Route path="/invoices/:id/edit" element={
+                    user?.role === 'product_owner' ? <Navigate to="/" replace /> : <EditInvoice onMenuClick={onMenuClick} />
+                  } />
 
-                  <Route path="/organizations" element={<Organizations onMenuClick={onMenuClick} />} />
-                  <Route path="/organizations/new" element={<CreateOrganization onMenuClick={onMenuClick} />} />
-                  <Route path="/organizations/:id" element={<OrganizationDetail onMenuClick={onMenuClick} />} />
+                  <Route path="/organizations" element={<PlanRoute><Organizations onMenuClick={onMenuClick} /></PlanRoute>} />
+                  <Route path="/organizations/new" element={<PlanRoute><CreateOrganization onMenuClick={onMenuClick} /></PlanRoute>} />
+                  <Route path="/organizations/:id" element={<PlanRoute><OrganizationDetail onMenuClick={onMenuClick} /></PlanRoute>} />
 
                   <Route path="/settings" element={<Settings onMenuClick={onMenuClick} />} />
                   <Route path="/users" element={<Users onMenuClick={onMenuClick} />} />
                   <Route path="/users/:id" element={<UserDetail onMenuClick={onMenuClick} />} />
 
-                  <Route path="/conversations" element={<Conversations onMenuClick={onMenuClick} />} />
+                  <Route path="/conversations" element={<PlanRoute><Conversations onMenuClick={onMenuClick} /></PlanRoute>} />
 
-                  <Route path="/superadmin" element={<SuperAdminPanel onMenuClick={onMenuClick} />} />
+                  <Route path="/premium" element={<PremiumFeatures onMenuClick={onMenuClick} />} />
+                  {/* /plan is always accessible — it's how free users upgrade */}
+                  <Route path="/plan" element={<MyPlan onMenuClick={onMenuClick} />} />
 
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route path="/enquiries" element={
+                    <ProductOwnerRoute>
+                      <Enquiries onMenuClick={onMenuClick} />
+                    </ProductOwnerRoute>
+                  } />
+
+                  <Route path="/superadmin" element={
+                    <ProductOwnerRoute>
+                      <SuperAdminPanel onMenuClick={onMenuClick} />
+                    </ProductOwnerRoute>
+                  } />
+
+                  <Route path="*" element={<NotFound />} />
                 </Routes>
               )}
             </Layout>

@@ -189,6 +189,16 @@ export default function Login() {
           </form>
         )}
 
+        {/* Sign up link */}
+        {mode === 'password' && (
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+            New to Productivo?{' '}
+            <Link to="/signup" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+              Sign up free
+            </Link>
+          </p>
+        )}
+
         {/* Quick login options */}
         {mode === 'password' && (mpinEnabled || biometricAvailable) && (
           <div className="mt-6">

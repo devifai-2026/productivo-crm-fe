@@ -20,6 +20,8 @@ export default function OrganizationDetail({ onMenuClick }) {
   const { currentOrg, isLoading, fetchOrgById, deleteOrg } = useOrganizationStore();
   const currentUser = useAuthStore((s) => s.user);
   const canDeleteOrg = currentUser?.role === 'superadmin' || currentUser?.role === 'org_admin';
+  const canToggleInvoiceAccess = currentUser?.role === 'superadmin' || currentUser?.role === 'product_owner';
+  const [togglingInvoiceAccess, setTogglingInvoiceAccess] = useState(false);
   const [showDeleteOrgModal, setShowDeleteOrgModal] = useState(false);
   const [deletingOrg, setDeletingOrg] = useState(false);
 
@@ -154,6 +156,17 @@ export default function OrganizationDetail({ onMenuClick }) {
     } catch {
       // handle error silently
     }
+  };
+
+  const handleToggleInvoiceAccess = async () => {
+    setTogglingInvoiceAccess(true);
+    try {
+      await organizationAPI.updateInvoicePermission(id, !org.canViewInvoices);
+      fetchOrgById(id);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to update invoice permission');
+    }
+    setTogglingInvoiceAccess(false);
   };
 
   // Payment Accounts handlers
@@ -497,6 +510,36 @@ export default function OrganizationDetail({ onMenuClick }) {
               )}
             </div>
           </Card>
+
+          {/* Invoice Access — superadmin controls whether org_admins can view invoices */}
+          {canToggleInvoiceAccess && (
+            <Card>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
+                  <Icon icon="lucide:file-text" className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Invoice Access for Admins</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {org.canViewInvoices
+                      ? 'Org admins can view, create and manage invoices in this organization.'
+                      : 'Org admins cannot view invoices. Only superadmin has access.'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleToggleInvoiceAccess}
+                  disabled={togglingInvoiceAccess}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
+                    ${org.canViewInvoices ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
+                    ${togglingInvoiceAccess ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  title={org.canViewInvoices ? 'Revoke invoice access' : 'Grant invoice access'}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out
+                    ${org.canViewInvoices ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+            </Card>
+          )}
 
           {/* Categories */}
           <Card padding={false}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import useOrganizationStore from '../store/organizationStore';
+import useAuthStore from '../store/authStore';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import SearchBar from '../components/ui/SearchBar';
@@ -11,8 +12,14 @@ import Badge from '../components/ui/Badge';
 
 export default function Organizations({ onMenuClick }) {
   const { organizations, isLoading, fetchOrganizations } = useOrganizationStore();
+  const { user, subscriptionPlan } = useAuthStore();
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
+
+  const userRole = user?.role || 'employee';
+  const isPro = userRole !== 'superadmin' || subscriptionPlan === 'pro' || subscriptionPlan === 'enterprise';
+  // Free superadmin can't create more orgs (master org already exists)
+  const canCreateOrg = isPro || userRole === 'product_owner' || organizations.length === 0;
 
   useEffect(() => {
     fetchOrganizations();
@@ -27,9 +34,9 @@ export default function Organizations({ onMenuClick }) {
       <Header
         title="Organizations"
         subtitle={`${organizations.length} organization${organizations.length !== 1 ? 's' : ''}`}
-        actionLabel="New Organization"
-        actionIcon="lucide:plus"
-        onAction={() => navigate('/organizations/new')}
+        actionLabel={canCreateOrg ? 'New Organization' : 'Upgrade to Add More'}
+        actionIcon={canCreateOrg ? 'lucide:plus' : 'lucide:lock'}
+        onAction={() => canCreateOrg ? navigate('/organizations/new') : navigate('/plan')}
         onMenuClick={onMenuClick}
       />
 

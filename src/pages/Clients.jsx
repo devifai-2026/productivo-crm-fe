@@ -6,6 +6,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import useClientStore from '../store/clientStore';
+import useAuthStore from '../store/authStore';
 import { clientAPI } from '../services/api';
 import { getEntityColor } from '../utils/entityColor';
 import Header from '../components/layout/Header';
@@ -49,6 +50,12 @@ const stageBgClasses = {
 
 export default function Clients({ onMenuClick }) {
   const { clients, isLoading, fetchClients } = useClientStore();
+  const { user, subscriptionPlan } = useAuthStore();
+  const isOwner = user?.role === 'product_owner';
+  const isSuperadmin = user?.role === 'superadmin';
+  const isPro = !isSuperadmin || subscriptionPlan === 'pro' || subscriptionPlan === 'enterprise';
+  const FREE_CLIENT_LIMIT = 3;
+  const atClientLimit = !isPro && isSuperadmin && clients.length >= FREE_CLIENT_LIMIT;
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
   const [viewMode, setViewMode] = useState('pipeline');
@@ -99,10 +106,10 @@ export default function Clients({ onMenuClick }) {
     <div>
       <Header
         title="Clients"
-        subtitle={`${clients.length} clients`}
-        actionLabel="New Client"
-        actionIcon="lucide:plus"
-        onAction={() => navigate('/clients/new')}
+        subtitle={`${clients.length} clients${atClientLimit ? ` · ${FREE_CLIENT_LIMIT} max on free plan` : ''}`}
+        actionLabel={atClientLimit ? 'Upgrade for More' : 'New Client'}
+        actionIcon={atClientLimit ? 'lucide:lock' : 'lucide:plus'}
+        onAction={() => atClientLimit ? navigate('/plan') : navigate('/clients/new')}
         onMenuClick={onMenuClick}
       />
 
@@ -246,6 +253,12 @@ export default function Clients({ onMenuClick }) {
                                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                                   {client.name}
                                 </p>
+                                {isOwner && client.organizationId?.name && (
+                                  <p className="text-xs font-medium text-purple-600 dark:text-purple-400 truncate flex items-center gap-1">
+                                    <Icon icon="lucide:building-2" className="w-3 h-3" />
+                                    {client.organizationId.name}
+                                  </p>
+                                )}
                                 {client.company && (
                                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                     {client.company}
@@ -349,9 +362,17 @@ export default function Clients({ onMenuClick }) {
                                 style={{ backgroundColor: ec.lightBg, color: ec.hex }}>
                                 {client.name?.charAt(0)?.toUpperCase()}
                               </div>
-                              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate max-w-[140px]">
-                                {client.name}
-                              </span>
+                              <div className="min-w-0">
+                                <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate block max-w-[140px]">
+                                  {client.name}
+                                </span>
+                                {isOwner && client.organizationId?.name && (
+                                  <span className="text-xs font-medium text-purple-600 dark:text-purple-400 flex items-center gap-1 mt-0.5">
+                                    <Icon icon="lucide:building-2" className="w-3 h-3" />
+                                    {client.organizationId.name}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-5 py-3.5">

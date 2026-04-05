@@ -1,14 +1,13 @@
 import { create } from 'zustand';
 import { whatsappAPI } from '../services/api';
+import { registerStoreReset } from './authStore';
 
-const useConversationStore = create((set, get) => ({
-  conversations: [],
-  currentPhone: null,
-  messages: [],
-  isLoadingConversations: false,
-  isLoadingMessages: false,
-  isSending: false,
-  error: null,
+const initialState = { conversations: [], currentPhone: null, messages: [], isLoadingConversations: false, isLoadingMessages: false, isSending: false, error: null };
+
+const useConversationStore = create((set, get) => {
+  registerStoreReset(() => set(initialState));
+  return {
+  ...initialState,
 
   fetchConversations: async () => {
     set({ isLoadingConversations: true, error: null });
@@ -100,6 +99,7 @@ const useConversationStore = create((set, get) => ({
   },
 
   clearMessages: () => set({ messages: [], currentPhone: null }),
-}));
+  };
+});
 
 export default useConversationStore;

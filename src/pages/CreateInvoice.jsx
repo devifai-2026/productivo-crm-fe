@@ -137,6 +137,9 @@ export default function CreateInvoice({ onMenuClick }) {
     const result = await createInvoice(payload);
     if (result.success) {
       navigate(`/invoices/${result.data._id}`);
+    } else if (result.code === 'PLAN_LIMIT') {
+      toast.error(`Free plan limit reached: max ${result.limit} invoices total. Upgrade to Pro for unlimited.`);
+      navigate('/plan');
     } else {
       setError(result.error || 'Failed to create invoice.');
     }

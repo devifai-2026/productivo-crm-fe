@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { meetingAPI } from '../services/api';
+import { registerStoreReset } from './authStore';
 
-const useMeetingStore = create((set) => ({
-  meetings: [],
-  currentMeeting: null,
-  isLoading: false,
-  error: null,
+const initialState = { meetings: [], currentMeeting: null, isLoading: false, error: null };
+
+const useMeetingStore = create((set) => {
+  registerStoreReset(() => set(initialState));
+  return {
+  ...initialState,
 
   fetchMeetings: async (params) => {
     set({ isLoading: true, error: null });
@@ -111,6 +113,7 @@ const useMeetingStore = create((set) => ({
   },
 
   clearCurrent: () => set({ currentMeeting: null }),
-}));
+  };
+});
 
 export default useMeetingStore;

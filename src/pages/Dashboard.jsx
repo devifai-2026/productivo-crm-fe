@@ -24,15 +24,15 @@ function StatCard({ icon, label, value, sub, color, onClick }) {
     indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400',
   };
   return (
-    <Card hover onClick={onClick}>
-      <div className="flex items-center gap-4">
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${colorMap[color]}`}>
-          <Icon icon={icon} className="w-5 h-5" />
+    <Card hover onClick={onClick} padding={false}>
+      <div className="p-3 sm:p-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+        <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 ${colorMap[color]}`}>
+          <Icon icon={icon} className="w-4 h-4 sm:w-5 sm:h-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-2xl font-bold text-gray-900 dark:text-gray-50 truncate">{value}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
-          {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
+          <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-gray-50 truncate leading-tight">{value}</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 leading-tight">{label}</p>
+          {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">{sub}</p>}
         </div>
       </div>
     </Card>
@@ -134,7 +134,7 @@ export default function Dashboard({ onMenuClick }) {
           <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
             Revenue Overview
           </h2>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <StatCard
               icon="lucide:indian-rupee"
               label="Total Revenue"
@@ -176,7 +176,7 @@ export default function Dashboard({ onMenuClick }) {
         <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
           Tasks
         </h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard icon="lucide:list-checks" label="Total Tasks" value={totalTasks} color="blue" onClick={() => navigate('/tasks')} />
           <StatCard icon="lucide:clock" label="Pending" value={pendingTasks} color="yellow" onClick={() => navigate('/tasks')} />
           <StatCard icon="lucide:check-circle-2" label="Completed" value={doneTasks} color="green" onClick={() => navigate('/tasks')} />

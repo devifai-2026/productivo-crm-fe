@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { clientAPI } from '../services/api';
+import { registerStoreReset } from './authStore';
 
-const useClientStore = create((set) => ({
-  clients: [],
-  currentClient: null,
-  isLoading: false,
-  error: null,
+const initialState = { clients: [], currentClient: null, isLoading: false, error: null };
+
+const useClientStore = create((set) => {
+  registerStoreReset(() => set(initialState));
+  return {
+  ...initialState,
 
   fetchClients: async (params) => {
     set({ isLoading: true, error: null });
@@ -38,9 +40,10 @@ const useClientStore = create((set) => ({
       set((state) => ({ clients: [client, ...state.clients], isLoading: false }));
       return { success: true, data: client };
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to create client';
+      const data = err.response?.data || {};
+      const message = data.error || data.message || 'Failed to create client';
       set({ error: message, isLoading: false });
-      return { success: false, error: message };
+      return { success: false, error: message, code: data.code, limit: data.limit, current: data.current };
     }
   },
 
@@ -75,6 +78,7 @@ const useClientStore = create((set) => ({
   },
 
   clearCurrent: () => set({ currentClient: null }),
-}));
+  };
+});
 
 export default useClientStore;

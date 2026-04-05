@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { projectAPI } from '../services/api';
+import { registerStoreReset } from './authStore';
 
-const useProjectStore = create((set) => ({
-  projects: [],
-  currentProject: null,
-  isLoading: false,
-  error: null,
+const initialState = { projects: [], currentProject: null, isLoading: false, error: null };
+
+const useProjectStore = create((set) => {
+  registerStoreReset(() => set(initialState));
+  return {
+  ...initialState,
 
   fetchProjects: async (params) => {
     set({ isLoading: true, error: null });
@@ -75,6 +77,7 @@ const useProjectStore = create((set) => ({
   },
 
   clearCurrent: () => set({ currentProject: null }),
-}));
+  };
+});
 
 export default useProjectStore;

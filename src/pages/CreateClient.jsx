@@ -166,6 +166,9 @@ export default function CreateClient({ onMenuClick }) {
     if (result.success) {
       toast.success('Client created successfully');
       navigate(`/clients/${result.data._id}`);
+    } else if (result.code === 'PLAN_LIMIT') {
+      toast.error(`Free plan limit reached: max ${result.limit} clients. Upgrade to Pro for unlimited.`);
+      navigate('/plan');
     } else {
       toast.error(result.error || 'Failed to create client');
     }

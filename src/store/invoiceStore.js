@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { invoiceAPI } from '../services/api';
+import { registerStoreReset } from './authStore';
 
-const useInvoiceStore = create((set) => ({
-  invoices: [],
-  currentInvoice: null,
-  isLoading: false,
-  error: null,
-  pagination: { total: 0, page: 1, limit: 15, pages: 1 },
+const initialState = { invoices: [], currentInvoice: null, isLoading: false, error: null, pagination: { total: 0, page: 1, limit: 15, pages: 1 } };
+
+const useInvoiceStore = create((set) => {
+  registerStoreReset(() => set(initialState));
+  return {
+  ...initialState,
 
   fetchInvoices: async (params) => {
     set({ isLoading: true, error: null });
@@ -40,9 +41,10 @@ const useInvoiceStore = create((set) => ({
       set((state) => ({ invoices: [invoice, ...state.invoices], isLoading: false }));
       return { success: true, data: invoice };
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to create invoice';
+      const data = err.response?.data || {};
+      const message = data.error || data.message || 'Failed to create invoice';
       set({ error: message, isLoading: false });
-      return { success: false, error: message };
+      return { success: false, error: message, code: data.code, limit: data.limit, current: data.current };
     }
   },
 
@@ -97,6 +99,7 @@ const useInvoiceStore = create((set) => ({
   },
 
   clearCurrent: () => set({ currentInvoice: null }),
-}));
+  };
+});
 
 export default useInvoiceStore;

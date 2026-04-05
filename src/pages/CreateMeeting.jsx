@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react';
 import useMeetingStore from '../store/meetingStore';
 import useProjectStore from '../store/projectStore';
 import useClientStore from '../store/clientStore';
+import useWhatsappAddonStore from '../store/whatsappAddonStore';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
@@ -15,6 +16,7 @@ export default function CreateMeeting({ onMenuClick }) {
   const { createMeeting, isLoading } = useMeetingStore();
   const { projects, fetchProjects } = useProjectStore();
   const { clients, fetchClients } = useClientStore();
+  const { isActive: waActive, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
 
   const [meetingType, setMeetingType] = useState('personal');
   const [form, setForm] = useState({
@@ -34,6 +36,7 @@ export default function CreateMeeting({ onMenuClick }) {
   useEffect(() => {
     fetchProjects();
     fetchClients();
+    if (!waFetched) fetchWaAddon();
   }, []);
 
   // Auto-add client to attendees when selected
@@ -258,7 +261,7 @@ export default function CreateMeeting({ onMenuClick }) {
                 <Icon icon="lucide:check-circle" className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <p className="text-sm text-emerald-700 dark:text-emerald-300">
                   {client.name} ({client.email}) will receive email
-                  {client.whatsappNumber ? ' + WhatsApp' : ''} notification
+                  {waActive && client.whatsappNumber ? ' + WhatsApp' : ''} notification
                 </p>
               </div>
             ) : null;
@@ -325,12 +328,14 @@ export default function CreateMeeting({ onMenuClick }) {
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input
-                  placeholder="WhatsApp (e.g. +91XXXXXXXXXX)"
-                  value={newAttendee.whatsapp}
-                  onChange={(e) => setNewAttendee({ ...newAttendee, whatsapp: e.target.value })}
-                  icon="lucide:message-circle"
-                />
+                {waActive && (
+                  <Input
+                    placeholder="WhatsApp (e.g. +91XXXXXXXXXX)"
+                    value={newAttendee.whatsapp}
+                    onChange={(e) => setNewAttendee({ ...newAttendee, whatsapp: e.target.value })}
+                    icon="lucide:message-circle"
+                  />
+                )}
                 <Select
                   value={newAttendee.type}
                   onChange={(e) => setNewAttendee({ ...newAttendee, type: e.target.value })}
@@ -352,7 +357,9 @@ export default function CreateMeeting({ onMenuClick }) {
             </div>
 
             <p className="text-xs text-gray-400 dark:text-gray-500">
-              All attendees receive an email invite. Those with a WhatsApp number also get a WhatsApp message. Attendees in the form above are included even if you haven't clicked "Add Attendee".
+              All attendees receive an email invite.
+              {waActive ? ' Those with a WhatsApp number also get a WhatsApp message.' : ''}
+              {' '}Attendees in the form above are included even if you haven't clicked "Add Attendee".
             </p>
           </div>
 

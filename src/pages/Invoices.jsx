@@ -7,6 +7,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import useInvoiceStore from '../store/invoiceStore';
+import useAuthStore from '../store/authStore';
 import { invoiceAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
@@ -53,6 +54,8 @@ const PAGE_SIZE = 15;
 
 export default function Invoices({ onMenuClick }) {
   const { invoices, isLoading, pagination, fetchInvoices } = useInvoiceStore();
+  const { user } = useAuthStore();
+  const isOwner = user?.role === 'product_owner';
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -186,6 +189,7 @@ export default function Invoices({ onMenuClick }) {
   const InvoiceRow = ({ invoice }) => {
     const client = invoice.clientId || invoice.client;
     const project = invoice.projectId || invoice.project;
+    const org = invoice.organizationId;
     const totalPaid = (invoice.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
     const balance = Math.max((invoice.total || 0) - totalPaid, 0);
     const canMarkPaid = invoice.status !== 'paid' && invoice.status !== 'cancelled';
@@ -209,6 +213,12 @@ export default function Invoices({ onMenuClick }) {
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap mt-0.5">
+              {isOwner && org?.name && (
+                <span className="text-xs font-medium px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 flex items-center gap-1">
+                  <Icon icon="lucide:building-2" className="w-3 h-3" />
+                  {org.name}
+                </span>
+              )}
               {client?.name && (
                 <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                   <Icon icon="lucide:user" className="w-3 h-3" />
