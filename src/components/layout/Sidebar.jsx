@@ -24,8 +24,7 @@ const allNavItems = [
   { path: '/plan',          label: 'My Plan',         icon: 'lucide:credit-card',    roles: ['superadmin'], isPlanItem: true },
   { path: '/premium',       label: 'Add-ons',         icon: 'lucide:zap',            roles: ['superadmin'], isAddonsItem: true },
   // product_owner platform-level
-  { path: '/organizations', label: 'All Orgs',        icon: 'lucide:building-2',     roles: ['product_owner'] },
-  { path: '/users',         label: 'All Users',       icon: 'lucide:shield',         roles: ['product_owner'] },
+  { path: '/users',         label: 'Accounts',        icon: 'lucide:shield-check',   roles: ['product_owner'] },
   { path: '/enquiries',     label: 'Leads',           icon: 'mdi:email-newsletter',  roles: ['product_owner'] },
   { path: '/superadmin',    label: 'Admin Panel',     icon: 'lucide:monitor-check',  roles: ['product_owner'] },
 ];

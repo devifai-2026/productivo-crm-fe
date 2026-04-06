@@ -5,7 +5,7 @@ import { format, isToday, isTomorrow, isPast, parseISO } from 'date-fns';
 import useAuthStore from '../store/authStore';
 import useTaskStore from '../store/taskStore';
 import useMeetingStore from '../store/meetingStore';
-import { dashboardAPI } from '../services/api';
+import { dashboardAPI, superAdminAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
@@ -68,11 +68,172 @@ function formatDueDate(dateStr) {
   } catch { return null; }
 }
 
+function ProductOwnerDashboard({ onMenuClick }) {
+  const { user } = useAuthStore();
+  const navigate = useNavigate();
+  const [overview, setOverview] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      superAdminAPI.getOverview(),
+      superAdminAPI.getUsers({ limit: 5, role: 'superadmin' }),
+    ]).then(([ovRes, usersRes]) => {
+      setOverview(ovRes.data?.data || null);
+      setAccounts(usersRes.data?.data?.users || usersRes.data?.data || []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const planBadge = (plan) => {
+    if (plan === 'pro') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Pro</span>;
+    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">Free</span>;
+  };
+
+  const db = overview?.db;
+  const statCards = db ? [
+    { icon: 'lucide:shield-check', label: 'Superadmin Accounts', value: overview.superadminBreakdown?.length ?? db.users, sub: 'Registered accounts', color: 'blue', path: '/users' },
+    { icon: 'lucide:building-2', label: 'Organisations', value: db.organizations, sub: 'Across all accounts', color: 'purple', path: null },
+    { icon: 'lucide:receipt', label: 'Total Invoices', value: db.invoices, sub: 'Platform-wide', color: 'green', path: null },
+    { icon: 'lucide:folder-open', label: 'Projects', value: db.projects, sub: 'Platform-wide', color: 'indigo', path: null },
+    { icon: 'lucide:list-checks', label: 'Tasks', value: db.tasks, sub: 'Platform-wide', color: 'yellow', path: null },
+    { icon: 'lucide:users-2', label: 'Total Users', value: db.users, sub: 'All roles combined', color: 'red', path: '/users' },
+  ] : [];
+
+  const healthCards = overview ? [
+    { icon: 'lucide:mail', label: 'Emails Today', value: overview.email?.today ?? 0, sub: `This month: ${overview.email?.thisMonth ?? 0}`, color: 'blue' },
+    { icon: 'lucide:message-circle', label: 'WhatsApp Today', value: overview.whatsapp?.today ?? 0, sub: `Limit: ${overview.whatsapp?.dailyLimit ?? 100}/day`, color: 'green' },
+    { icon: 'lucide:activity', label: 'API Calls Today', value: overview.api?.today ?? 0, sub: `Errors: ${overview.api?.errorsToday ?? 0}`, color: 'purple' },
+    { icon: 'lucide:help-circle', label: 'New Enquiries', value: overview.enquiries?.new ?? 0, sub: `Total: ${overview.enquiries?.total ?? 0}`, color: 'yellow' },
+  ] : [];
+
+  return (
+    <div className="space-y-8">
+      <Header
+        title={`${getGreeting()}, ${user?.name?.split(' ')[0] || 'there'}`}
+        subtitle={`Product Owner · ${format(new Date(), 'EEEE, MMMM d, yyyy')}`}
+        onMenuClick={onMenuClick}
+      />
+
+      {/* Platform Stats */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Platform Overview</h2>
+        {loading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {[...Array(6)].map((_, i) => <div key={i} className="h-20 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {statCards.map((s) => <StatCard key={s.label} {...s} onClick={s.path ? () => navigate(s.path) : undefined} />)}
+          </div>
+        )}
+      </div>
+
+      {/* System Health */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">System Health</h2>
+        {loading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-20 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {healthCards.map((s) => <StatCard key={s.label} {...s} />)}
+          </div>
+        )}
+      </div>
+
+      {/* Quick Links */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Management</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: 'Superadmin Accounts', icon: 'lucide:shield-check', path: '/users', color: 'text-blue-600 dark:text-blue-400' },
+            { label: 'Feature Flags', icon: 'lucide:toggle-right', path: '/feature-flags', color: 'text-purple-600 dark:text-purple-400' },
+            { label: 'Activity Logs', icon: 'lucide:scroll-text', path: '/logs', color: 'text-gray-600 dark:text-gray-400' },
+            { label: 'Payments', icon: 'lucide:credit-card', path: '/payments', color: 'text-emerald-600 dark:text-emerald-400' },
+          ].map((a) => (
+            <button key={a.path} onClick={() => navigate(a.path)}
+              className="flex items-center gap-3 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-sm transition-all duration-150">
+              <Icon icon={a.icon} className={`w-5 h-5 ${a.color}`} />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{a.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent Superadmin Accounts + DB Stats */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Recent Accounts */}
+        <Card padding={false}>
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Recent Superadmin Accounts</h3>
+            <button onClick={() => navigate('/users')} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">View all</button>
+          </div>
+          <div className="divide-y divide-gray-50 dark:divide-gray-800">
+            {loading ? (
+              <div className="px-5 py-8 text-center text-sm text-gray-400">Loading...</div>
+            ) : accounts.length === 0 ? (
+              <div className="px-5 py-8 text-center text-sm text-gray-400">No accounts found</div>
+            ) : accounts.slice(0, 5).map((acc) => (
+              <div key={acc._id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                  <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{acc.name?.[0]?.toUpperCase() || '?'}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{acc.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{acc.email}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {planBadge(acc.subscription?.plan || acc.plan)}
+                  {acc.isActive === false && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">Blocked</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* DB Collection Stats */}
+        <Card padding={false}>
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Database Collections</h3>
+          </div>
+          <div className="divide-y divide-gray-50 dark:divide-gray-800">
+            {loading ? (
+              <div className="px-5 py-8 text-center text-sm text-gray-400">Loading...</div>
+            ) : (overview?.db?.collections || []).slice(0, 7).map((col) => (
+              <div key={col.name} className="flex items-center justify-between px-5 py-3 text-sm">
+                <span className="text-gray-700 dark:text-gray-300 font-medium capitalize">{col.name}</span>
+                <div className="flex items-center gap-4 text-gray-500 dark:text-gray-400 text-xs">
+                  <span>{col.count?.toLocaleString()} docs</span>
+                  <span className="text-gray-300 dark:text-gray-600">·</span>
+                  <span>{col.sizeKB} KB</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard({ onMenuClick }) {
   const { user } = useAuthStore();
   const { tasks, fetchTasks } = useTaskStore();
   const { meetings, fetchMeetings } = useMeetingStore();
   const navigate = useNavigate();
+
+  if (user?.role === 'product_owner') {
+    return <ProductOwnerDashboard onMenuClick={onMenuClick} />;
+  }
 
   const [stats, setStats] = useState(null);
 
