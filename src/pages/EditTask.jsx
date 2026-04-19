@@ -8,6 +8,7 @@ import useAuthStore from '../store/authStore';
 import { categoryAPI, organizationAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Input from '../components/ui/Input';
+import DatePicker from '../components/ui/DatePicker';
 import Select from '../components/ui/Select';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
@@ -198,7 +199,7 @@ export default function EditTask({ onMenuClick }) {
                 placeholder="Select category"
                 options={categories.map((c) => ({ value: c._id, label: c.name }))}
               />
-              <Input label="Due Date" type="date" value={form.dueDate} onChange={updateField('dueDate')} />
+              <DatePicker label="Due Date" value={form.dueDate} onChange={updateField('dueDate')} />
             </div>
           </div>
 

@@ -11,8 +11,17 @@ import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
 import Modal from '../components/ui/Modal';
 
+function ProfileField({ label, value }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">{label}</p>
+      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{value || '—'}</p>
+    </div>
+  );
+}
+
 export default function Settings({ onMenuClick }) {
-  const { user, logout } = useAuthStore();
+  const { user, logout, refreshProfile } = useAuthStore();
   const { isDark, mode, setMode } = useThemeStore();
 
   const [categories, setCategories] = useState([]);
@@ -26,9 +35,108 @@ export default function Settings({ onMenuClick }) {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
 
+  // Phone profile flow
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  const [showChangeModal, setShowChangeModal] = useState(false);
+  const [changeReason, setChangeReason] = useState('');
+  const [phoneRequests, setPhoneRequests] = useState([]);
+  const [pendingRequestExists, setPendingRequestExists] = useState(false);
+  const [reviewingId, setReviewingId] = useState(null); // id of request currently being approved/rejected
+
+  const isSuperadmin = user?.role === 'superadmin';
+  const phoneEditWindowActive = user?.phoneEditUntil && new Date(user.phoneEditUntil) > new Date();
+
   useEffect(() => {
     fetchCategories();
-  }, []);
+    if (isSuperadmin) fetchPhoneRequests();
+    checkExistingRequest();
+  }, [isSuperadmin]);
+
+  const fetchPhoneRequests = async () => {
+    try {
+      const res = await authAPI.listPhoneRequests();
+      setPhoneRequests(res.data?.data || []);
+    } catch {}
+  };
+
+  const checkExistingRequest = async () => {
+    // cheapest check: a successful request-change POST returns pending:true if one exists —
+    // but we don't want to create one. Skip silently — the UI will show a toast from the POST handler.
+  };
+
+  const handleSavePhone = async () => {
+    const trimmed = phoneInput.trim();
+    if (!trimmed) return toast.error('Phone number is required.');
+    const digits = trimmed.replace(/\D/g, '');
+    const validLength = digits.length === 10 || (digits.length === 12 && digits.startsWith('91'));
+    if (!validLength) {
+      toast.error('Enter a valid 10-digit phone number (or +91 followed by 10 digits).');
+      return;
+    }
+    setPhoneBusy(true);
+    try {
+      if (!user?.phoneNumber) {
+        await authAPI.setPhone(phoneInput.trim());
+        toast.success('Phone number saved.');
+      } else {
+        await authAPI.updatePhone(phoneInput.trim());
+        toast.success('Phone number updated.');
+      }
+      setPhoneInput('');
+      await refreshProfile();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to save phone.');
+    } finally {
+      setPhoneBusy(false);
+    }
+  };
+
+  const handleRequestChange = async () => {
+    setPhoneBusy(true);
+    try {
+      const res = await authAPI.requestPhoneChange(changeReason.trim());
+      if (res.data?.autoApproved) {
+        toast.success('You have 24 hours to update your phone.');
+        await refreshProfile();
+      } else {
+        toast.success('Request sent to your superadmin for approval.');
+        setPendingRequestExists(true);
+      }
+      setShowChangeModal(false);
+      setChangeReason('');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to submit request.');
+    } finally {
+      setPhoneBusy(false);
+    }
+  };
+
+  const handleApprove = async (id) => {
+    setReviewingId(id);
+    try {
+      await authAPI.approvePhoneRequest(id, '');
+      toast.success('Approved. User notified by email.');
+      await fetchPhoneRequests();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to approve.');
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const handleReject = async (id) => {
+    setReviewingId(id);
+    try {
+      await authAPI.rejectPhoneRequest(id, '');
+      toast.success('Rejected. User notified by email.');
+      await fetchPhoneRequests();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to reject.');
+    } finally {
+      setReviewingId(null);
+    }
+  };
 
   const fetchCategories = async () => {
     try {
@@ -110,7 +218,7 @@ export default function Settings({ onMenuClick }) {
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Profile
           </h3>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-6">
             <Avatar name={user?.name} size="xl" />
             <div>
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -126,7 +234,117 @@ export default function Settings({ onMenuClick }) {
               )}
             </div>
           </div>
+
+          {/* Read-only fields */}
+          <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-gray-800">
+            <ProfileField label="Full Name" value={user?.name} />
+            <ProfileField label="Email" value={user?.email} />
+
+            {/* Phone — editable once, then request-change flow */}
+            {user?.phoneNumber && !phoneEditWindowActive ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+                    Phone Number
+                  </p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {user.phoneNumber}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon="lucide:pencil"
+                  onClick={() => setShowChangeModal(true)}
+                  disabled={pendingRequestExists}
+                >
+                  {pendingRequestExists ? 'Request Pending…' : 'Request Change'}
+                </Button>
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1.5">
+                  Phone Number
+                </label>
+                {phoneEditWindowActive && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">
+                    ✓ Edit window active — you can update your phone until{' '}
+                    {new Date(user.phoneEditUntil).toLocaleString()}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <Input
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button onClick={handleSavePhone} loading={phoneBusy} icon="lucide:save">
+                    Save
+                  </Button>
+                </div>
+                {!user?.phoneNumber && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                    One-time set. Future changes require superadmin approval.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </Card>
+
+        {/* Pending phone change requests — superadmin only */}
+        {isSuperadmin && phoneRequests.length > 0 && (
+          <Card>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
+              Phone Change Requests
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Users in your org requesting phone updates. Approved users get a 24h window to set their new number.
+            </p>
+            <div className="space-y-3">
+              {phoneRequests.map((r) => (
+                <div
+                  key={r._id}
+                  className="flex items-start justify-between gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-800"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {r.userId?.name} <span className="text-gray-400">·</span>{' '}
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{r.userId?.email}</span>
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Current: {r.currentPhone || '—'} · Role: {r.userId?.role}
+                    </p>
+                    {r.reason && (
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 italic">"{r.reason}"</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleReject(r._id)}
+                      loading={reviewingId === r._id}
+                      disabled={!!reviewingId && reviewingId !== r._id}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleApprove(r._id)}
+                      loading={reviewingId === r._id}
+                      disabled={!!reviewingId && reviewingId !== r._id}
+                    >
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Theme */}
         <Card>
@@ -360,6 +578,26 @@ export default function Settings({ onMenuClick }) {
               Save MPIN
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={showChangeModal} onClose={() => setShowChangeModal(false)} title="Request Phone Change" size="sm">
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Your superadmin will review this request. Once approved, you'll have 24 hours to update your phone number in Settings.
+        </p>
+        <label className="block text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+          Reason (optional)
+        </label>
+        <textarea
+          rows={3}
+          value={changeReason}
+          onChange={(e) => setChangeReason(e.target.value.slice(0, 300))}
+          placeholder="Why do you need to change your phone number?"
+          className="w-full text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-gray-700 dark:text-gray-200 outline-none focus:border-blue-500 resize-none"
+        />
+        <div className="flex gap-3 justify-end pt-4">
+          <Button variant="outline" onClick={() => setShowChangeModal(false)}>Cancel</Button>
+          <Button onClick={handleRequestChange} loading={phoneBusy}>Send Request</Button>
         </div>
       </Modal>
     </div>

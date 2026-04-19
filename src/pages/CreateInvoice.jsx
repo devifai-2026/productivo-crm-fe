@@ -5,7 +5,8 @@ import toast from 'react-hot-toast';
 import useInvoiceStore from '../store/invoiceStore';
 import useClientStore from '../store/clientStore';
 import useAuthStore from '../store/authStore';
-import { paymentAccountAPI, organizationAPI, projectAPI } from '../services/api';
+import { paymentAccountAPI, organizationAPI, projectAPI, whatsappAddonAPI } from '../services/api';
+import useWhatsappAddonStore from '../store/whatsappAddonStore';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
@@ -21,12 +22,20 @@ export default function CreateInvoice({ onMenuClick }) {
   const { createInvoice, isLoading } = useInvoiceStore();
   const { clients, fetchClients } = useClientStore();
   const { user } = useAuthStore();
+  const { features: waFeatures, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
+  const [sendWhatsapp, setSendWhatsapp] = useState(false);
+  // `busy` = any part of the submit chain in flight — save OR follow-up WA send
+  const [busy, setBusy] = useState(false);
   const isSuperAdmin = user?.role === 'superadmin';
+
+  useEffect(() => { if (!waFetched) fetchWaAddon(); }, [waFetched, fetchWaAddon]);
 
   const [form, setForm] = useState({
     organizationId: '',
     clientId: '',
     projectId: '',
+    purpose: '',
+    dueDate: '',
     notes: '',
   });
   const [clientProjects, setClientProjects] = useState([]);
@@ -124,6 +133,8 @@ export default function CreateInvoice({ onMenuClick }) {
       organizationId: orgId,
       clientId: form.clientId,
       projectId: form.projectId || undefined,
+      purpose: form.purpose?.trim() || undefined,
+      dueDate: form.dueDate || undefined,
       notes: form.notes || undefined,
       paymentAccountIds: selectedPaymentAccountIds.length ? selectedPaymentAccountIds : undefined,
       items: items.map((item) => ({
@@ -134,14 +145,35 @@ export default function CreateInvoice({ onMenuClick }) {
       })),
     };
 
-    const result = await createInvoice(payload);
-    if (result.success) {
-      navigate(`/invoices/${result.data._id}`);
-    } else if (result.code === 'PLAN_LIMIT') {
-      toast.error(`Free plan limit reached: max ${result.limit} invoices total. Upgrade to Pro for unlimited.`);
-      navigate('/plan');
-    } else {
-      setError(result.error || 'Failed to create invoice.');
+    setBusy(true);
+    try {
+      const result = await createInvoice(payload);
+      if (!result.success) {
+        if (result.code === 'PLAN_LIMIT') {
+          toast.error(`Free plan limit reached: max ${result.limit} invoices total. Upgrade to Pro for unlimited.`);
+          navigate('/plan');
+        } else {
+          setError(result.error || 'Failed to create invoice.');
+        }
+        return;
+      }
+
+      const invoiceId = result.data._id;
+      if (sendWhatsapp && invoiceId && waFeatures?.invoice?.isActive) {
+        try {
+          const res = await whatsappAddonAPI.sendInvoice(invoiceId);
+          if (res.data?.success) {
+            toast.success('Invoice sent via WhatsApp');
+          } else {
+            toast.error('Invoice saved — WhatsApp send failed');
+          }
+        } catch (err) {
+          toast.error(err.response?.data?.error || 'Invoice saved — WhatsApp send failed');
+        }
+      }
+      navigate(`/invoices/${invoiceId}`);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -153,7 +185,8 @@ export default function CreateInvoice({ onMenuClick }) {
         onMenuClick={onMenuClick}
       />
 
-      <Card className="max-w-3xl">
+      <div className="grid xl:grid-cols-[1fr_360px] gap-6">
+      <Card>
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
             <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
@@ -338,6 +371,23 @@ export default function CreateInvoice({ onMenuClick }) {
             </div>
           </div>
 
+          {/* Purpose + Due Date — used in client notifications (email/WhatsApp) */}
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Input
+              label="Invoice For"
+              placeholder="e.g. Website Development"
+              value={form.purpose}
+              onChange={updateField('purpose')}
+              maxLength={200}
+            />
+            <Input
+              label="Payment Due By"
+              type="date"
+              value={form.dueDate}
+              onChange={updateField('dueDate')}
+            />
+          </div>
+
           {/* Notes */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Notes</label>
@@ -350,12 +400,117 @@ export default function CreateInvoice({ onMenuClick }) {
             />
           </div>
 
+          {waFeatures?.invoice?.isActive && form.clientId && (
+            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-900/10 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendWhatsapp}
+                onChange={(e) => setSendWhatsapp(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  <Icon icon="mdi:whatsapp" className="w-4 h-4" />
+                  Also send invoice to client's WhatsApp
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 block">
+                  Uses the client's phone number from the Clients page.
+                </span>
+              </span>
+            </label>
+          )}
+
           <div className="flex gap-3 pt-4">
-            <Button type="submit" loading={isLoading}>Create Invoice</Button>
-            <Button variant="outline" type="button" onClick={() => navigate('/invoices')}>Cancel</Button>
+            <Button type="submit" loading={busy || isLoading} disabled={busy || isLoading}>
+              {busy && sendWhatsapp && waFeatures?.invoice?.isActive
+                ? 'Sending via WhatsApp…'
+                : busy
+                  ? 'Saving invoice…'
+                  : sendWhatsapp && waFeatures?.invoice?.isActive
+                    ? 'Create & Send via WhatsApp'
+                    : 'Create Invoice'}
+            </Button>
+            <Button variant="outline" type="button" onClick={() => navigate('/invoices')} disabled={busy}>Cancel</Button>
           </div>
         </form>
       </Card>
+
+      {/* WhatsApp preview — only when addon is active */}
+      {waFeatures?.invoice?.isActive && (
+        <div className="xl:sticky xl:top-6 self-start">
+          <WhatsappPreview
+            clientName={clients.find((c) => c._id === form.clientId)?.name}
+            purpose={form.purpose}
+            dueDate={form.dueDate}
+            invoiceNumber="auto-generated"
+            orgName="Productivo"
+          />
+        </div>
+      )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────────── WhatsApp preview ───────────────────────────── */
+
+function WhatsappPreview({ clientName, purpose, dueDate, orgName }) {
+  const displayName = clientName?.trim() || '{client name}';
+  const displayPurpose = purpose?.trim() || '{invoice for}';
+  const displayDate = dueDate
+    ? new Date(dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '{due date}';
+
+  return (
+    <div className="rounded-2xl overflow-hidden shadow-sm border border-gray-200 dark:border-gray-800 bg-[#e5ddd5] dark:bg-gray-800">
+      {/* WhatsApp header */}
+      <div className="bg-[#075e54] dark:bg-[#0a4a43] px-4 py-3 flex items-center gap-3">
+        <Icon icon="mdi:whatsapp" className="w-5 h-5 text-white" />
+        <div>
+          <p className="text-sm font-semibold text-white">WhatsApp Preview</p>
+          <p className="text-[11px] text-white/70">How your client will see it</p>
+        </div>
+      </div>
+
+      {/* Chat body */}
+      <div className="p-4">
+        <div className="bg-white dark:bg-gray-900 rounded-xl rounded-tl-none shadow-sm p-3 max-w-[90%]">
+          {/* PDF attachment pill */}
+          <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800 mb-2.5">
+            <div className="w-9 h-9 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+              <Icon icon="lucide:file-text" className="w-4 h-4 text-red-600 dark:text-red-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">Invoice.pdf</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">PDF · attached</p>
+            </div>
+          </div>
+
+          {/* Body text — mirrors WABridge template invoice_template_002 */}
+          <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
+            Hello <strong>{displayName}</strong>,{'\n\n'}
+            Please find your invoice for <strong>{displayPurpose}</strong> attached.{'\n'}
+            We kindly request you to review the details and process the payment by <strong>{displayDate}</strong>.{'\n\n'}
+            If you have any questions or need any clarification, please feel free to reach out.{'\n\n'}
+            We appreciate your business and look forward to working with you again.
+          </p>
+
+          {/* Footer */}
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">Sent via {orgName}</p>
+
+          {/* Timestamp */}
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 text-right mt-1">
+            {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+            <Icon icon="lucide:check-check" className="inline w-3 h-3 ml-1 text-[#34b7f1]" />
+          </p>
+        </div>
+
+        {(!clientName?.trim() || !purpose?.trim() || !dueDate) && (
+          <p className="mt-3 text-[11px] text-gray-500 dark:text-gray-400 text-center">
+            Fill in Client, Invoice For, and Due Date to complete the preview.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

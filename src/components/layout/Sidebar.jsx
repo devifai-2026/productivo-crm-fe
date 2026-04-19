@@ -7,7 +7,7 @@ import useWhatsappAddonStore from '../../store/whatsappAddonStore';
 import Avatar from '../ui/Avatar';
 
 // Routes accessible on free plan (superadmin)
-const FREE_PLAN_ROUTES = new Set(['/', '/tasks', '/projects', '/clients', '/invoices', '/settings', '/premium', '/plan', '/organizations', '/users']);
+const FREE_PLAN_ROUTES = new Set(['/', '/tasks', '/projects', '/clients', '/invoices', '/settings', '/premium', '/plan', '/organizations', '/users', '/usage', '/attendance', '/timesheet', '/org-tree']);
 
 const allNavItems = [
   // Shared
@@ -21,8 +21,11 @@ const allNavItems = [
   { path: '/conversations', label: 'WhatsApp',        icon: 'lucide:message-circle', roles: ['superadmin', 'org_admin'] },
   { path: '/organizations', label: 'Organization',    icon: 'lucide:building-2',     roles: ['superadmin', 'org_admin'] },
   { path: '/users',         label: 'Users',           icon: 'lucide:shield',         roles: ['superadmin', 'org_admin'] },
-  { path: '/plan',          label: 'My Plan',         icon: 'lucide:credit-card',    roles: ['superadmin'], isPlanItem: true },
-  { path: '/premium',       label: 'Add-ons',         icon: 'lucide:zap',            roles: ['superadmin'], isAddonsItem: true },
+  { path: '/premium',       label: 'Add-ons',         icon: 'lucide:zap',            roles: ['superadmin', 'org_admin'], isAddonsItem: true },
+  { path: '/usage',         label: 'Data & Activity', icon: 'lucide:activity',       roles: ['superadmin', 'product_owner'] },
+  { path: '/attendance',    label: 'Attendance',      icon: 'lucide:clock',          roles: ['superadmin', 'org_admin', 'employee'] },
+  { path: '/timesheet',     label: 'Timesheet',       icon: 'lucide:clipboard-list', roles: ['superadmin', 'org_admin'] },
+  { path: '/org-tree',      label: 'Org Tree',        icon: 'lucide:git-branch',     roles: ['superadmin', 'org_admin', 'product_owner'] },
   // product_owner platform-level
   { path: '/users',         label: 'Accounts',        icon: 'lucide:shield-check',   roles: ['product_owner'] },
   { path: '/enquiries',     label: 'Leads',           icon: 'mdi:email-newsletter',  roles: ['product_owner'] },
@@ -30,6 +33,7 @@ const allNavItems = [
 ];
 
 const bottomItems = [
+  { path: '/plan',     label: 'My Plan',  icon: 'lucide:credit-card', isPlanItem: true },
   { path: '/settings', label: 'Settings', icon: 'lucide:settings' },
 ];
 
@@ -42,9 +46,14 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const isSuperadmin = userRole === 'superadmin';
   const isPro = !isSuperadmin || subscriptionPlan === 'pro' || subscriptionPlan === 'enterprise';
 
-  const navItems = allNavItems.filter((item) => item.roles.includes(userRole));
-
   const { isActive: waActive, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
+
+  const navItems = allNavItems.filter((item) => {
+    if (!item.roles.includes(userRole)) return false;
+    // Hide Add-ons tab once any WhatsApp add-on has been purchased
+    if (item.isAddonsItem && waActive) return false;
+    return true;
+  });
 
   useEffect(() => {
     if (user && user.role !== 'product_owner' && !waFetched) {

@@ -7,9 +7,11 @@ import useProjectStore from '../store/projectStore';
 import useAuthStore from '../store/authStore';
 import useClientStore from '../store/clientStore';
 import useOrganizationStore from '../store/organizationStore';
-import { categoryAPI, organizationAPI, userAPI, taskAPI } from '../services/api';
+import { categoryAPI, organizationAPI, userAPI, taskAPI, whatsappAddonAPI } from '../services/api';
+import useWhatsappAddonStore from '../store/whatsappAddonStore';
 import Header from '../components/layout/Header';
 import Input from '../components/ui/Input';
+import DatePicker from '../components/ui/DatePicker';
 import Select from '../components/ui/Select';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Button from '../components/ui/Button';
@@ -272,7 +274,12 @@ export default function CreateTask({ onMenuClick }) {
   const { user } = useAuthStore();
   const { clients, fetchClients } = useClientStore();
   const { organizations, fetchOrganizations } = useOrganizationStore();
+  const { features: waFeatures, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
+  const [sendWhatsapp, setSendWhatsapp] = useState(false);
+  const [busy, setBusy] = useState(false);
   const isSuperAdmin = user?.role === 'superadmin';
+
+  useEffect(() => { if (!waFetched) fetchWaAddon(); }, [waFetched, fetchWaAddon]);
 
   const [projectClient,      setProjectClient]      = useState(null);
   const [categories,         setCategories]          = useState([]);
@@ -398,10 +405,16 @@ export default function CreateTask({ onMenuClick }) {
     if (form.dueDate) payload.dueDate = `${form.dueDate}T12:00:00.000Z`;
     if (isSuperAdmin && selectedOrg) payload.organizationId = selectedOrg._id;
 
-    const result = await createTask(payload);
-    if (result.success) {
+    setBusy(true);
+    try {
+      const result = await createTask(payload);
+      if (!result.success) {
+        toast.error(result.error || 'Failed to create task');
+        return;
+      }
+
+      const taskId = result.data._id;
       if (attachments.length > 0) {
-        const taskId = result.data._id;
         for (const att of attachments) {
           const fd = new FormData();
           fd.append('file', att.file);
@@ -409,9 +422,22 @@ export default function CreateTask({ onMenuClick }) {
         }
       }
       toast.success('Task created successfully');
+
+      if (sendWhatsapp && taskId && waFeatures?.task_reminder?.isActive) {
+        try {
+          const res = await whatsappAddonAPI.sendTaskReminder(taskId, {});
+          if (res.data?.success) {
+            toast.success('WhatsApp reminder sent to assignee');
+          } else {
+            toast.error('Task saved — reminder failed');
+          }
+        } catch (err) {
+          toast.error(err.response?.data?.error || 'Task saved — reminder failed');
+        }
+      }
       navigate('/tasks');
-    } else {
-      toast.error(result.error || 'Failed to create task');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -562,9 +588,8 @@ export default function CreateTask({ onMenuClick }) {
                 isSuperAdmin={isSuperAdmin}
               />
 
-              <Input
+              <DatePicker
                 label="Due Date"
-                type="date"
                 value={form.dueDate}
                 onChange={updateField('dueDate')}
                 error={errors.dueDate}
@@ -699,9 +724,37 @@ export default function CreateTask({ onMenuClick }) {
             <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">JPEG, PNG, GIF, WebP · max 10 MB each</p>
           </div>
 
+          {waFeatures?.task_reminder?.isActive && selectedAssignees.length > 0 && (
+            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-900/10 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendWhatsapp}
+                onChange={(e) => setSendWhatsapp(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  <Icon icon="mdi:whatsapp" className="w-4 h-4" />
+                  Also send WhatsApp reminder to {selectedAssignees[0]?.name || 'assignee'}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 block">
+                  Uses the assignee's phone number from their profile.
+                </span>
+              </span>
+            </label>
+          )}
+
           <div className="flex gap-3">
-            <Button type="submit" loading={isLoading} icon="lucide:check">Create Task</Button>
-            <Button variant="outline" type="button" onClick={() => navigate('/tasks')}>Cancel</Button>
+            <Button type="submit" loading={busy || isLoading} disabled={busy || isLoading} icon={busy ? undefined : 'lucide:check'}>
+              {busy && sendWhatsapp && waFeatures?.task_reminder?.isActive
+                ? 'Sending WhatsApp reminder…'
+                : busy
+                  ? 'Saving task…'
+                  : sendWhatsapp && waFeatures?.task_reminder?.isActive
+                    ? 'Create & Send Reminder'
+                    : 'Create Task'}
+            </Button>
+            <Button variant="outline" type="button" onClick={() => navigate('/tasks')} disabled={busy}>Cancel</Button>
           </div>
         </form>
 

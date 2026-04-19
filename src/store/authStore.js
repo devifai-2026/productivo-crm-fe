@@ -109,6 +109,17 @@ const useAuthStore = create((set, get) => ({
     }
   },
 
+  refreshProfile: async () => {
+    try {
+      const res = await authAPI.getProfile();
+      const user = res.data?.data || res.data;
+      set({ user });
+      return user;
+    } catch {
+      return null;
+    }
+  },
+
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');

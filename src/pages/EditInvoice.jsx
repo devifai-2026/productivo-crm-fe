@@ -5,6 +5,7 @@ import useInvoiceStore from '../store/invoiceStore';
 import { invoiceAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
+import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import Modal from '../components/ui/Modal';
@@ -22,6 +23,8 @@ export default function EditInvoice({ onMenuClick }) {
 
   const [items, setItems] = useState([{ description: '', quantity: 1, rate: 0 }]);
   const [notes, setNotes] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [taxPercentage, setTaxPercentage] = useState(0);
   const [saving, setSaving] = useState(false);
   const [revising, setRevising] = useState(false);
@@ -43,6 +46,8 @@ export default function EditInvoice({ onMenuClick }) {
         }))
       );
       setNotes(currentInvoice.notes || '');
+      setPurpose(currentInvoice.purpose || '');
+      setDueDate(currentInvoice.dueDate ? new Date(currentInvoice.dueDate).toISOString().slice(0, 10) : '');
       setTaxPercentage(currentInvoice.taxPercentage ?? 0);
       setInitialized(true);
     }
@@ -69,6 +74,8 @@ export default function EditInvoice({ onMenuClick }) {
       amount: (parseFloat(item.quantity) || 1) * (parseFloat(item.rate) || 0),
     })),
     notes,
+    purpose: (purpose || '').trim(),
+    dueDate: dueDate || null,
     taxPercentage: parseFloat(taxPercentage) || 0,
   });
 
@@ -297,6 +304,23 @@ export default function EditInvoice({ onMenuClick }) {
                 <span className="text-gray-900 dark:text-gray-100">{formatINR(total)}</span>
               </div>
             </div>
+          </div>
+
+          {/* Purpose + Due Date */}
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Input
+              label="Invoice For"
+              placeholder="e.g. Website Development"
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              maxLength={200}
+            />
+            <Input
+              label="Payment Due By"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
           </div>
 
           {/* Notes */}

@@ -17,6 +17,7 @@ import EmptyState from '../components/ui/EmptyState';
 import Spinner from '../components/ui/Spinner';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
+import DatePicker from '../components/ui/DatePicker';
 import Select from '../components/ui/Select';
 import Button from '../components/ui/Button';
 
@@ -521,7 +522,7 @@ export default function Invoices({ onMenuClick }) {
             <div className="grid grid-cols-2 gap-3">
               <Input label="Amount" type="number" step="0.01" min="0" icon="lucide:indian-rupee"
                 value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
-              <Input label="Date" type="date" value={paymentForm.date}
+              <DatePicker label="Date" value={paymentForm.date}
                 onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-3">

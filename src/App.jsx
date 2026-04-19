@@ -42,6 +42,10 @@ import ForgotPassword from './pages/ForgotPassword';
 import Enquiries from './pages/Enquiries';
 import PremiumFeatures from './pages/PremiumFeatures';
 import MyPlan from './pages/MyPlan';
+import DataUsage from './pages/DataUsage';
+import Attendance from './pages/Attendance';
+import Timesheet from './pages/Timesheet';
+import OrgTree from './pages/OrgTree';
 import NotFound from './pages/NotFound';
 
 function LoadingScreen() {
@@ -162,6 +166,11 @@ function AppRoutes() {
                   <Route path="/premium" element={<PremiumFeatures onMenuClick={onMenuClick} />} />
                   {/* /plan is always accessible — it's how free users upgrade */}
                   <Route path="/plan" element={<MyPlan onMenuClick={onMenuClick} />} />
+
+                  <Route path="/usage" element={<DataUsage onMenuClick={onMenuClick} />} />
+                  <Route path="/attendance" element={<Attendance onMenuClick={onMenuClick} />} />
+                  <Route path="/timesheet" element={<Timesheet onMenuClick={onMenuClick} />} />
+                  <Route path="/org-tree" element={<OrgTree onMenuClick={onMenuClick} />} />
 
                   <Route path="/enquiries" element={
                     <ProductOwnerRoute>

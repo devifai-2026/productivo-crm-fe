@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import toast from 'react-hot-toast';
 import useAuthStore from '../store/authStore';
-import { authAPI } from '../services/api';
+import useWhatsappAddonStore from '../store/whatsappAddonStore';
+import { authAPI, whatsappAddonAPI } from '../services/api';
 import api from '../config/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
@@ -10,6 +12,12 @@ import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Spinner from '../components/ui/Spinner';
+
+const ADDON_META = {
+  invoice: { label: 'Invoice via WhatsApp', icon: 'lucide:file-text' },
+  task_reminder: { label: 'Task Reminders via WhatsApp', icon: 'lucide:bell' },
+  meeting_invite: { label: 'Meeting Invites via WhatsApp', icon: 'lucide:calendar' },
+};
 
 const FREE_FEATURES = [
   { label: '3 clients (lifetime)',                   icon: 'lucide:users',          included: true },
@@ -71,15 +79,20 @@ function UsageBar({ label, current, limit, icon }) {
 
 export default function MyPlan({ onMenuClick }) {
   const { user, subscriptionPlan, signupVerifyOtp } = useAuthStore();
+  const { features: waFeatures, fetch: fetchAddons } = useWhatsappAddonStore();
+  const navigate = useNavigate();
   const [sub, setSub] = useState(null);
   const [loading, setLoading] = useState(true);
   const [upgradeModal, setUpgradeModal] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [form, setForm] = useState({ name: user?.name || '', email: user?.email || '', phone: '' });
   const [formErrors, setFormErrors] = useState({});
+  const [waLogs, setWaLogs] = useState([]);
 
   useEffect(() => {
     fetchSub();
+    fetchAddons();
+    whatsappAddonAPI.getLogs({ limit: 10 }).then((r) => setWaLogs(r.data?.data || [])).catch(() => {});
   }, []);
 
   const fetchSub = async () => {
@@ -220,6 +233,82 @@ export default function MyPlan({ onMenuClick }) {
               ))}
             </ul>
           </Card>
+
+          {/* WhatsApp Add-ons */}
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">WhatsApp Add-ons</h3>
+              <button
+                onClick={() => navigate('/premium')}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+              >
+                Manage →
+              </button>
+            </div>
+            <div className="space-y-2.5">
+              {Object.entries(ADDON_META).map(([key, meta]) => {
+                const active = waFeatures?.[key]?.isActive;
+                const exp = waFeatures?.[key]?.expiresAt;
+                return (
+                  <div key={key} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Icon icon={meta.icon} className="w-4 h-4 text-gray-400" />
+                      <div>
+                        <p className="text-sm text-gray-700 dark:text-gray-300">{meta.label}</p>
+                        {active && exp && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
+                            Until {new Date(exp).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {active ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
+                        <Icon icon="lucide:check-circle" className="w-3 h-3" /> Unlocked
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs font-semibold">
+                        <Icon icon="lucide:lock" className="w-3 h-3" /> Locked
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* WhatsApp usage log */}
+          {waLogs.length > 0 && (
+            <Card>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                Recent WhatsApp Sends
+              </h3>
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {waLogs.map((log) => (
+                  <li key={log._id} className="py-2.5 flex items-start gap-3">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${log.success ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+                      <Icon
+                        icon={log.success ? 'mdi:whatsapp' : 'lucide:alert-circle'}
+                        className={`w-3.5 h-3.5 ${log.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-700 dark:text-gray-300 truncate">{log.subject || '—'}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        to {log.to || '—'}
+                        {log.userEmail ? ` · by ${log.userEmail}` : ''}
+                        {' · '}
+                        {new Date(log.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      {!log.success && log.errorMsg && (
+                        <p className="text-xs text-red-500 truncate">{log.errorMsg}</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
 
         {/* Right: upgrade CTA or pro perks */}

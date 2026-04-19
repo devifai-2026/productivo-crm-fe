@@ -5,13 +5,17 @@ import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import useTaskStore from '../store/taskStore';
 import useAuthStore from '../store/authStore';
+import useWhatsappAddonStore from '../store/whatsappAddonStore';
+import { whatsappAddonAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import Spinner from '../components/ui/Spinner';
 import Avatar from '../components/ui/Avatar';
 import Modal from '../components/ui/Modal';
+import TaskTimer from '../components/tasks/TaskTimer';
 
 const statusOptions = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
 
@@ -20,14 +24,42 @@ export default function TaskDetail({ onMenuClick }) {
   const navigate = useNavigate();
   const { currentTask, isLoading, fetchTask, updateTask, deleteTask, clearCurrent } = useTaskStore();
   const { user } = useAuthStore();
+  const { features: waFeatures, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
   const canDelete = user?.role === 'superadmin' || user?.role === 'org_admin';
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [showRemindModal, setShowRemindModal] = useState(false);
+  const [remindPhone, setRemindPhone] = useState('');
+  const [remindSending, setRemindSending] = useState(false);
 
   useEffect(() => {
     fetchTask(id);
+    if (!waFetched) fetchWaAddon();
     return () => clearCurrent();
   }, [id]);
+
+  const handleSendReminder = async (e) => {
+    e.preventDefault();
+    if (!remindPhone.trim()) {
+      toast.error('Phone number is required');
+      return;
+    }
+    setRemindSending(true);
+    try {
+      const res = await whatsappAddonAPI.sendTaskReminder(id, { phone: remindPhone.trim() });
+      if (res.data?.success) {
+        toast.success('Reminder sent via WhatsApp');
+        setShowRemindModal(false);
+        setRemindPhone('');
+      } else {
+        toast.error('Failed to send reminder');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to send reminder');
+    } finally {
+      setRemindSending(false);
+    }
+  };
 
   const handleStatusChange = async (status) => {
     const result = await updateTask(id, { status });
@@ -81,6 +113,17 @@ export default function TaskDetail({ onMenuClick }) {
         ]}
         onMenuClick={onMenuClick}
       >
+        {waFeatures?.task_reminder?.isActive && (
+          <Button
+            variant="outline"
+            size="sm"
+            icon="mdi:whatsapp"
+            onClick={() => setShowRemindModal(true)}
+            className="text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900"
+          >
+            Remind
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -105,6 +148,16 @@ export default function TaskDetail({ onMenuClick }) {
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Time tracking */}
+          <TaskTimer
+            taskId={id}
+            taskStatus={task.status}
+            onComplete={() => {
+              // Auto-mark task as done when timer stops? Only when user explicitly marks it.
+              // Keeping the toggle manual for now — the backend already stores the total time.
+            }}
+          />
+
           {/* Description */}
           <Card>
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
@@ -295,6 +348,26 @@ export default function TaskDetail({ onMenuClick }) {
           <Button variant="outline" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
           <Button variant="danger" onClick={handleDelete}>Delete</Button>
         </div>
+      </Modal>
+
+      <Modal isOpen={showRemindModal} onClose={() => setShowRemindModal(false)} title="Send WhatsApp Reminder" size="sm">
+        <form onSubmit={handleSendReminder} className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Send a reminder for <strong>"{task.title}"</strong> to a WhatsApp number.
+          </p>
+          <Input
+            label="Phone Number"
+            type="tel"
+            placeholder="+91 98765 43210"
+            value={remindPhone}
+            onChange={(e) => setRemindPhone(e.target.value)}
+            required
+          />
+          <div className="flex gap-3 justify-end pt-1">
+            <Button type="button" variant="outline" onClick={() => setShowRemindModal(false)}>Cancel</Button>
+            <Button type="submit" icon="mdi:whatsapp" loading={remindSending}>Send Reminder</Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

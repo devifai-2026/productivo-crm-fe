@@ -15,6 +15,13 @@ export const authAPI = {
   verifyOtp: (data) => api.post('/auth/verify-otp', data),
   resetPassword: (data) => api.post('/auth/reset-password', data),
   deleteOwnAccount: () => api.delete('/auth/account'),
+  // Phone profile flow
+  setPhone: (phoneNumber) => api.post('/auth/profile/phone', { phoneNumber }),
+  updatePhone: (phoneNumber) => api.patch('/auth/profile/phone', { phoneNumber }),
+  requestPhoneChange: (reason) => api.post('/auth/profile/phone/request-change', { reason }),
+  listPhoneRequests: () => api.get('/auth/phone-change-requests'),
+  approvePhoneRequest: (id, note) => api.post(`/auth/phone-change-requests/${id}/approve`, { note }),
+  rejectPhoneRequest: (id, note) => api.post(`/auth/phone-change-requests/${id}/reject`, { note }),
 };
 
 export const taskAPI = {
@@ -26,6 +33,22 @@ export const taskAPI = {
   addSubtask: (id, data) => api.post(`/tasks/${id}/subtasks`, data),
   updateSubtask: (id, subtaskId, data) => api.put(`/tasks/${id}/subtasks/${subtaskId}`, data),
   addAttachment: (id, formData) => api.post(`/tasks/${id}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  // Task timer
+  getTimer: (id) => api.get(`/tasks/${id}/timer`),
+  startTimer: (id) => api.post(`/tasks/${id}/timer/start`),
+  stopTimer: (id, note) => api.post(`/tasks/${id}/timer/stop`, { note }),
+  getTimeLogs: (id) => api.get(`/tasks/${id}/time-logs`),
+};
+
+export const attendanceAPI = {
+  clockIn: () => api.post('/attendance/clock-in'),
+  clockOut: () => api.post('/attendance/clock-out'),
+  myToday: () => api.get('/attendance/me/today'),
+  myHistory: (params) => api.get('/attendance/me', { params }),
+  // Admin
+  adminList: (params) => api.get('/attendance', { params }),
+  listMembers: () => api.get('/attendance/members'),
+  exportExcel: (params) => api.get('/attendance/export', { params, responseType: 'blob' }),
 };
 
 export const projectAPI = {
@@ -93,6 +116,7 @@ export const organizationAPI = {
   addMember: (id, data) => api.post(`/organizations/${id}/members`, data),
   removeMember: (orgId, userId) => api.delete(`/organizations/${orgId}/members/${userId}`),
   updateInvoicePermission: (id, canViewInvoices) => api.patch(`/organizations/${id}/invoice-permission`, { canViewInvoices }),
+  getTree: () => api.get('/organizations/tree'),
 };
 
 export const userAPI = {
@@ -170,4 +194,24 @@ export const featureFlagAPI = {
   listWhatsapp: () => api.get('/feature-flags/whatsapp'),
   getWhatsapp: (superadminId) => api.get(`/feature-flags/whatsapp/${superadminId}`),
   setWhatsapp: (superadminId, data) => api.put(`/feature-flags/whatsapp/${superadminId}`, data),
+};
+
+export const usageAPI = {
+  // For superadmin/org_admin: own org. For product_owner: pass {superadminId} or {orgId} to scope.
+  getOverview: (params = {}) => api.get('/usage/overview', { params }),
+  // product_owner only
+  listSuperadmins: () => api.get('/usage/superadmins'),
+};
+
+export const whatsappAddonAPI = {
+  // Per-feature addon status (invoice / task_reminder / meeting_invite)
+  getMine: () => api.get('/whatsapp-addons/me'),
+  // Initiate Cashfree payment for one-or-three features
+  initiatePurchase: (data) => api.post('/payments/addon/initiate', data),
+  // Send actions (require the matching feature to be active)
+  sendInvoice: (invoiceId) => api.post(`/whatsapp-addons/send-invoice/${invoiceId}`),
+  sendTaskReminder: (taskId, data) => api.post(`/whatsapp-addons/send-task-reminder/${taskId}`, data),
+  sendMeetingInvite: (meetingId) => api.post(`/whatsapp-addons/send-meeting-invite/${meetingId}`),
+  // Recent sends (activity logs)
+  getLogs: (params = {}) => api.get('/whatsapp-addons/logs', { params }),
 };

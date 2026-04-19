@@ -6,6 +6,7 @@ import useProjectStore from '../store/projectStore';
 import useClientStore from '../store/clientStore';
 import Header from '../components/layout/Header';
 import Input from '../components/ui/Input';
+import DatePicker from '../components/ui/DatePicker';
 import Select from '../components/ui/Select';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
@@ -169,8 +170,8 @@ export default function EditProject({ onMenuClick }) {
             </h2>
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input label="Start Date" type="date" value={form.startDate} onChange={updateField('startDate')} />
-                <Input label="End Date" type="date" value={form.endDate} onChange={updateField('endDate')} error={errors.endDate} />
+                <DatePicker label="Start Date" value={form.startDate} onChange={updateField('startDate')} />
+                <DatePicker label="End Date" value={form.endDate} onChange={updateField('endDate')} error={errors.endDate} min={form.startDate} />
               </div>
               <Select label="Status" value={form.status} onChange={updateField('status')} options={STATUS_OPTIONS} />
             </div>

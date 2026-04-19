@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import useWhatsappAddonStore from '../store/whatsappAddonStore';
+import LogsView from '../components/whatsapp/LogsView';
 import { Icon } from '@iconify/react';
 import { formatDistanceToNow, format } from 'date-fns';
 import useConversationStore from '../store/conversationStore';
@@ -156,6 +158,12 @@ export default function Conversations({ onMenuClick }) {
   const [newPhone, setNewPhone]       = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
   const [sendError, setSendError]     = useState('');
+  const [activeTab, setActiveTab]     = useState('chats'); // 'chats' | 'logs'
+
+  const { isActive: anyAddonActive, isFetched: addonFetched, fetch: fetchAddons } = useWhatsappAddonStore();
+  useEffect(() => {
+    if (!addonFetched) fetchAddons();
+  }, [addonFetched, fetchAddons]);
   const bottomRef   = useRef(null);
   const pollingRef  = useRef(null);
   const inputRef    = useRef(null);
@@ -229,13 +237,52 @@ export default function Conversations({ onMenuClick }) {
     <div className="flex flex-col h-screen">
       <Header
         title="WhatsApp"
-        subtitle={totalUnread > 0 ? `${totalUnread} unread` : 'Conversations'}
+        subtitle={activeTab === 'chats' ? (totalUnread > 0 ? `${totalUnread} unread` : 'Conversations') : 'Sent logs'}
         onMenuClick={onMenuClick}
-        onAction={() => setShowNewChat(true)}
-        actionLabel="New Chat"
-        actionIcon="lucide:plus"
+        onAction={activeTab === 'chats' ? () => setShowNewChat(true) : undefined}
+        actionLabel={activeTab === 'chats' ? 'New Chat' : undefined}
+        actionIcon={activeTab === 'chats' ? 'lucide:plus' : undefined}
       />
 
+      {/* Tab switcher — Logs tab only shown if at least one addon is active */}
+      {anyAddonActive && (
+        <div className="flex items-center gap-1 px-4 pt-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950">
+          <button
+            onClick={() => setActiveTab('chats')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === 'chats'
+                ? 'border-green-500 text-green-600 dark:text-green-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Icon icon="lucide:message-circle" className="w-4 h-4" />
+              Chats
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('logs')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === 'logs'
+                ? 'border-green-500 text-green-600 dark:text-green-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Icon icon="lucide:list" className="w-4 h-4" />
+              Logs
+            </span>
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'logs' && anyAddonActive ? (
+        <div className="flex-1 overflow-auto px-6 py-6 bg-gray-50 dark:bg-gray-950">
+          <div className="max-w-5xl mx-auto">
+            <LogsView />
+          </div>
+        </div>
+      ) : (
       <div className="flex flex-1 overflow-hidden">
         {/* ── Left: Conversation list ── */}
         <aside className="w-80 shrink-0 flex flex-col border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950">
@@ -385,6 +432,7 @@ export default function Conversations({ onMenuClick }) {
           )}
         </main>
       </div>
+      )}
     </div>
   );
 }

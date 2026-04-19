@@ -6,6 +6,7 @@ import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Select from '../components/ui/Select';
+import DatePicker from '../components/ui/DatePicker';
 import Spinner from '../components/ui/Spinner';
 
 function StatCard({ label, value, icon, color = 'blue', sub }) {
@@ -1048,11 +1049,10 @@ export default function SuperAdminPanel({ onMenuClick }) {
                                 ))}
                               </div>
                               {form.expiryLabel === 'custom' && (
-                                <input
-                                  type="date"
+                                <DatePicker
                                   value={form.customDate}
                                   onChange={(e) => setWaForm((prev) => ({ ...prev, [saId]: { ...form, customDate: e.target.value } }))}
-                                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                                  placeholder="Pick expiry date"
                                 />
                               )}
                             </div>

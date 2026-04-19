@@ -28,6 +28,7 @@ export default function OrganizationDetail({ onMenuClick }) {
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [memberEmail, setMemberEmail] = useState('');
   const [memberName, setMemberName] = useState('');
+  const [memberPhone, setMemberPhone] = useState('');
   const [memberPassword, setMemberPassword] = useState('');
   const [memberRole, setMemberRole] = useState('employee');
   const [addingMember, setAddingMember] = useState(false);
@@ -97,18 +98,42 @@ export default function OrganizationDetail({ onMenuClick }) {
   };
 
   const handleAddMember = async () => {
-    if (!memberEmail) return;
+    if (!memberEmail) {
+      setMemberError('Email is required.');
+      return;
+    }
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(memberEmail.trim())) {
+      setMemberError('Enter a valid email address.');
+      return;
+    }
+    if (memberName && memberName.trim().length < 2) {
+      setMemberError('Name must be at least 2 characters.');
+      return;
+    }
+    const digits = memberPhone.replace(/\D/g, '');
+    const validLength = digits.length === 10 || (digits.length === 12 && digits.startsWith('91'));
+    if (!validLength) {
+      setMemberError('Enter a valid 10-digit phone number (or +91 followed by 10 digits).');
+      return;
+    }
+    if (memberPassword && memberPassword.length < 6) {
+      setMemberError('Password must be at least 6 characters.');
+      return;
+    }
     setAddingMember(true);
     setMemberError('');
     try {
       await organizationAPI.addMember(id, {
         email: memberEmail,
         name: memberName || undefined,
+        phoneNumber: memberPhone.trim(),
         password: memberPassword || undefined,
         role: memberRole,
       });
       setMemberEmail('');
       setMemberName('');
+      setMemberPhone('');
       setMemberPassword('');
       setMemberRole('employee');
       setShowMemberModal(false);
@@ -794,6 +819,15 @@ export default function OrganizationDetail({ onMenuClick }) {
             onChange={(e) => setMemberName(e.target.value)}
           />
           <Input
+            label="Phone Number"
+            type="tel"
+            placeholder="+91 98765 43210"
+            icon="lucide:phone"
+            value={memberPhone}
+            onChange={(e) => setMemberPhone(e.target.value)}
+            required
+          />
+          <Input
             label="Password (for new users)"
             type="password"
             placeholder="Min 6 characters"
@@ -818,7 +852,7 @@ export default function OrganizationDetail({ onMenuClick }) {
             <Button variant="outline" onClick={() => { setShowMemberModal(false); setMemberError(''); }}>
               Cancel
             </Button>
-            <Button onClick={handleAddMember} loading={addingMember} disabled={!memberEmail}>
+            <Button onClick={handleAddMember} loading={addingMember} disabled={!memberEmail || !memberPhone}>
               Add Member
             </Button>
           </div>

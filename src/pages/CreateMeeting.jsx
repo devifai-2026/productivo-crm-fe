@@ -5,9 +5,12 @@ import useMeetingStore from '../store/meetingStore';
 import useProjectStore from '../store/projectStore';
 import useClientStore from '../store/clientStore';
 import useWhatsappAddonStore from '../store/whatsappAddonStore';
+import { whatsappAddonAPI } from '../services/api';
+import toast from 'react-hot-toast';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
+import DatePicker from '../components/ui/DatePicker';
 import Select from '../components/ui/Select';
 import Button from '../components/ui/Button';
 
@@ -16,7 +19,9 @@ export default function CreateMeeting({ onMenuClick }) {
   const { createMeeting, isLoading } = useMeetingStore();
   const { projects, fetchProjects } = useProjectStore();
   const { clients, fetchClients } = useClientStore();
-  const { isActive: waActive, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
+  const { isActive: waActive, features: waFeatures, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
+  const [sendWhatsapp, setSendWhatsapp] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const [meetingType, setMeetingType] = useState('personal');
   const [form, setForm] = useState({
@@ -101,11 +106,30 @@ export default function CreateMeeting({ onMenuClick }) {
       attendees: finalAttendees,
     };
 
-    const result = await createMeeting(payload);
-    if (result.success) {
-      navigate(`/meetings/${result.data?._id || ''}`);
-    } else {
-      setError(result.error || 'Failed to create meeting');
+    setBusy(true);
+    try {
+      const result = await createMeeting(payload);
+      if (!result.success) {
+        setError(result.error || 'Failed to create meeting');
+        return;
+      }
+
+      const newId = result.data?._id;
+      if (sendWhatsapp && newId && waFeatures?.meeting_invite?.isActive) {
+        try {
+          const res = await whatsappAddonAPI.sendMeetingInvite(newId);
+          if (res.data?.success) {
+            toast.success(`WhatsApp invite sent to ${res.data.sent}/${res.data.total} attendees`);
+          } else {
+            toast.error('Meeting saved — WhatsApp send failed');
+          }
+        } catch (err) {
+          toast.error(err.response?.data?.error || 'Meeting saved — WhatsApp send failed');
+        }
+      }
+      navigate(`/meetings/${newId || ''}`);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -188,7 +212,7 @@ export default function CreateMeeting({ onMenuClick }) {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Input label="Date" type="date" value={form.date} onChange={updateField('date')} required />
+            <DatePicker label="Date" value={form.date} onChange={updateField('date')} required />
             <Input label="Time" type="time" value={form.time} onChange={updateField('time')} required />
             <Select
               label="Duration"
@@ -363,11 +387,37 @@ export default function CreateMeeting({ onMenuClick }) {
             </p>
           </div>
 
+          {waFeatures?.meeting_invite?.isActive && (
+            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-900/10 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendWhatsapp}
+                onChange={(e) => setSendWhatsapp(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  <Icon icon="mdi:whatsapp" className="w-4 h-4" />
+                  Also send WhatsApp invite to attendees
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 block">
+                  Sent only to attendees with a WhatsApp number filled in.
+                </span>
+              </span>
+            </label>
+          )}
+
           <div className="flex gap-3 pt-4">
-            <Button type="submit" loading={isLoading}>
-              Schedule Meeting
+            <Button type="submit" loading={busy || isLoading} disabled={busy || isLoading}>
+              {busy && sendWhatsapp && waFeatures?.meeting_invite?.isActive
+                ? 'Sending WhatsApp invites…'
+                : busy
+                  ? 'Saving meeting…'
+                  : sendWhatsapp && waFeatures?.meeting_invite?.isActive
+                    ? 'Schedule & Send Invite'
+                    : 'Schedule Meeting'}
             </Button>
-            <Button variant="outline" type="button" onClick={() => navigate('/meetings')}>
+            <Button variant="outline" type="button" onClick={() => navigate('/meetings')} disabled={busy}>
               Cancel
             </Button>
           </div>

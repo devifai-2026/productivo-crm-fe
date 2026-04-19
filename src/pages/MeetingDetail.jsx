@@ -5,6 +5,8 @@ import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import useMeetingStore from '../store/meetingStore';
 import useAuthStore from '../store/authStore';
+import useWhatsappAddonStore from '../store/whatsappAddonStore';
+import { whatsappAddonAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -17,8 +19,10 @@ export default function MeetingDetail({ onMenuClick }) {
   const navigate = useNavigate();
   const { currentMeeting, isLoading, fetchMeeting, deleteMeeting, addNotes, sendNotes, clearCurrent } = useMeetingStore();
   const { user } = useAuthStore();
+  const { features: waFeatures, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
   const canManage = user?.role === 'superadmin' || user?.role === 'org_admin';
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [sendingInvite, setSendingInvite] = useState(false);
 
   // MOM state
   const [editingNotes, setEditingNotes] = useState(false);
@@ -28,8 +32,25 @@ export default function MeetingDetail({ onMenuClick }) {
 
   useEffect(() => {
     fetchMeeting(id);
+    if (!waFetched) fetchWaAddon();
     return () => clearCurrent();
   }, [id]);
+
+  const handleSendInviteWhatsapp = async () => {
+    setSendingInvite(true);
+    try {
+      const res = await whatsappAddonAPI.sendMeetingInvite(id);
+      if (res.data?.success) {
+        toast.success(`Invite sent to ${res.data.sent} of ${res.data.total} attendees`);
+      } else {
+        toast.error(res.data?.error || 'Failed to send invite');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to send invite');
+    } finally {
+      setSendingInvite(false);
+    }
+  };
 
   // Sync notes textarea when meeting loads
   useEffect(() => {
@@ -130,6 +151,18 @@ export default function MeetingDetail({ onMenuClick }) {
         ]}
         onMenuClick={onMenuClick}
       >
+        {canManage && waFeatures?.meeting_invite?.isActive && (
+          <Button
+            variant="outline"
+            size="sm"
+            icon="mdi:whatsapp"
+            loading={sendingInvite}
+            onClick={handleSendInviteWhatsapp}
+            className="text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900"
+          >
+            Send Invite
+          </Button>
+        )}
         {canManage && (
           <Button
             variant="outline"

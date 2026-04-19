@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { format, parseISO } from 'date-fns';
+import toast from 'react-hot-toast';
 import useInvoiceStore from '../store/invoiceStore';
 import useWhatsappAddonStore from '../store/whatsappAddonStore';
-import { invoiceAPI, paymentAccountAPI } from '../services/api';
+import { invoiceAPI, paymentAccountAPI, whatsappAddonAPI } from '../services/api';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import DatePicker from '../components/ui/DatePicker';
 import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import Modal from '../components/ui/Modal';
@@ -35,7 +37,8 @@ export default function InvoiceDetail({ onMenuClick }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentInvoice, isLoading, fetchInvoice, updateInvoice, clearCurrent } = useInvoiceStore();
-  const { isActive: waActive, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
+  const { isActive: waActive, features: waFeatures, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendCC, setSendCC] = useState('');
@@ -214,6 +217,23 @@ export default function InvoiceDetail({ onMenuClick }) {
     setSending(false);
   };
 
+  const handleSendViaWhatsapp = async () => {
+    setSendingWhatsapp(true);
+    try {
+      const res = await whatsappAddonAPI.sendInvoice(id);
+      if (res.data?.success) {
+        toast.success('Invoice sent via WhatsApp');
+      } else {
+        toast.error('Failed to send via WhatsApp');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to send via WhatsApp');
+    } finally {
+      setSendingWhatsapp(false);
+      setShowActions(false);
+    }
+  };
+
   if (isLoading && !currentInvoice) {
     return (
       <div className="flex justify-center py-20">
@@ -348,8 +368,27 @@ export default function InvoiceDetail({ onMenuClick }) {
                       className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                     >
                       <Icon icon="lucide:send" className="w-4 h-4" />
-                      Send Invoice
+                      Send Invoice (Email)
                     </button>
+                    {waFeatures?.invoice?.isActive && (
+                      <button
+                        onClick={handleSendViaWhatsapp}
+                        disabled={sendingWhatsapp}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-60 disabled:cursor-wait"
+                      >
+                        {sendingWhatsapp ? (
+                          <>
+                            <Icon icon="lucide:loader-2" className="w-4 h-4 animate-spin" />
+                            Sending via WhatsApp…
+                          </>
+                        ) : (
+                          <>
+                            <Icon icon="mdi:whatsapp" className="w-4 h-4" />
+                            Send via WhatsApp
+                          </>
+                        )}
+                      </button>
+                    )}
                     {invoice.status === 'draft' && (
                       <button
                         onClick={() => { handleMarkSent(); setShowActions(false); }}
@@ -717,7 +756,7 @@ export default function InvoiceDetail({ onMenuClick }) {
                   <div className="grid grid-cols-2 gap-3">
                     <Input label="Amount" type="number" step="0.01" min="0" placeholder="0.00" icon="lucide:indian-rupee"
                       value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} required />
-                    <Input label="Date" type="date" value={paymentForm.date}
+                    <DatePicker label="Date" value={paymentForm.date}
                       onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })} />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -764,7 +803,7 @@ export default function InvoiceDetail({ onMenuClick }) {
                           <Input label="Amount" type="number" step="0.01" min="0" icon="lucide:indian-rupee"
                             value={editPaymentForm.amount}
                             onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })} />
-                          <Input label="Date" type="date" value={editPaymentForm.date}
+                          <DatePicker label="Date" value={editPaymentForm.date}
                             onChange={(e) => setEditPaymentForm({ ...editPaymentForm, date: e.target.value })} />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
