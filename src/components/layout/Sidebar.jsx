@@ -25,7 +25,6 @@ const allNavItems = [
   { path: '/usage',         label: 'Data & Activity', icon: 'lucide:activity',       roles: ['superadmin', 'product_owner'] },
   { path: '/attendance',    label: 'Attendance',      icon: 'lucide:clock',          roles: ['superadmin', 'org_admin', 'employee'] },
   { path: '/timesheet',     label: 'Timesheet',       icon: 'lucide:clipboard-list', roles: ['superadmin', 'org_admin'] },
-  { path: '/org-tree',      label: 'Org Tree',        icon: 'lucide:git-branch',     roles: ['superadmin', 'org_admin', 'product_owner'] },
   // product_owner platform-level
   { path: '/users',         label: 'Accounts',        icon: 'lucide:shield-check',   roles: ['product_owner'] },
   { path: '/enquiries',     label: 'Leads',           icon: 'mdi:email-newsletter',  roles: ['product_owner'] },

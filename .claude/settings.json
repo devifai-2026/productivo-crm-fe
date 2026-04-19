@@ -4,7 +4,29 @@
       "Bash(npx eslint *)",
       "Bash(npx vite *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/api/v1/health)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/)",
+      "Read(//Users/subhojitdutta/Desktop/d/productivo-crm-app/**)",
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(awk '{print $3}')",
+      "Bash(npx expo *)",
+      "Bash(node -e ' *)"
+    ],
+    "additionalDirectories": [
+      "/tmp",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/services",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/store",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/premium",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/invoices",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/tasks",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/meetings",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/attendance",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/organizations",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/usage",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/superadmin",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens/users",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/screens",
+      "/Users/subhojitdutta/Desktop/d/productivo-crm-app/src/navigation"
     ]
   }
 }

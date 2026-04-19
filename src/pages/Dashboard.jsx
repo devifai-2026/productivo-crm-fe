@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { format, isToday, isTomorrow, isPast, parseISO } from 'date-fns';
+import toast from 'react-hot-toast';
 import useAuthStore from '../store/authStore';
 import useTaskStore from '../store/taskStore';
 import useMeetingStore from '../store/meetingStore';
-import { dashboardAPI, superAdminAPI } from '../services/api';
+import { dashboardAPI, superAdminAPI, attendanceAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
@@ -54,6 +55,88 @@ function MiniBar({ label, value, max, color }) {
         <div className={`h-2 rounded-full transition-all duration-500 ${colors[color] || 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-8 text-right">{value}</span>
+    </div>
+  );
+}
+
+function AttendanceQuickTimer() {
+  const [today, setToday] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [liveMs, setLiveMs] = useState(0);
+  const navigate = useNavigate();
+
+  const load = async () => {
+    try {
+      const res = await attendanceAPI.myToday();
+      setToday(res.data?.data || null);
+    } catch {}
+  };
+
+  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!today?.loginAt || today?.logoutAt) { setLiveMs(0); return; }
+    const start = new Date(today.loginAt).getTime();
+    setLiveMs(Date.now() - start);
+    const id = setInterval(() => setLiveMs(Date.now() - start), 1000);
+    return () => clearInterval(id);
+  }, [today?.loginAt, today?.logoutAt]);
+
+  const isClockedIn = today?.loginAt && !today?.logoutAt;
+  const elapsed = isClockedIn ? liveMs : (today?.totalMs || 0);
+  const mins = Math.floor(elapsed / 60000);
+  const hours = Math.floor(mins / 60);
+  const remMin = mins % 60;
+  const seconds = isClockedIn ? Math.floor((elapsed % 60000) / 1000) : 0;
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      const res = isClockedIn ? await attendanceAPI.clockOut() : await attendanceAPI.clockIn();
+      setToday(res.data?.data || null);
+      toast.success(isClockedIn ? 'Clocked out' : 'Clocked in');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update attendance');
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className={`flex items-center gap-4 p-4 rounded-2xl border ${
+      isClockedIn
+        ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
+        : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800'
+    }`}>
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${
+        isClockedIn ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+      }`}>
+        <Icon icon={isClockedIn ? 'lucide:timer' : 'lucide:clock'} className="w-5 h-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-xs font-semibold uppercase tracking-wider ${
+          isClockedIn ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'
+        }`}>
+          {isClockedIn ? 'Clocked in · live' : today?.logoutAt ? 'Today · clocked out' : 'Not clocked in'}
+        </p>
+        <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tabular-nums mt-0.5">
+          {hours}h {String(remMin).padStart(2, '0')}m{isClockedIn && ` ${String(seconds).padStart(2, '0')}s`}
+        </p>
+      </div>
+      <button
+        onClick={() => navigate('/attendance')}
+        className="hidden sm:inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+      >
+        History <Icon icon="lucide:arrow-right" className="w-3 h-3" />
+      </button>
+      <button
+        onClick={toggle}
+        disabled={busy}
+        className={`px-4 sm:px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity ${
+          isClockedIn ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'
+        } ${busy ? 'opacity-60' : ''}`}
+      >
+        {busy ? '…' : isClockedIn ? 'Clock out' : 'Clock in'}
+      </button>
     </div>
   );
 }
@@ -288,6 +371,9 @@ export default function Dashboard({ onMenuClick }) {
         subtitle={format(new Date(), 'EEEE, MMMM d, yyyy')}
         onMenuClick={onMenuClick}
       />
+
+      {/* Attendance quick timer */}
+      <AttendanceQuickTimer />
 
       {/* Invoice Revenue Cards */}
       {stats?.invoices && (

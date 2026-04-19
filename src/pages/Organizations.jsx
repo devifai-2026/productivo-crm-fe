@@ -9,11 +9,13 @@ import SearchBar from '../components/ui/SearchBar';
 import EmptyState from '../components/ui/EmptyState';
 import Spinner from '../components/ui/Spinner';
 import Badge from '../components/ui/Badge';
+import OrgTree from './OrgTree';
 
 export default function Organizations({ onMenuClick }) {
   const { organizations, isLoading, fetchOrganizations } = useOrganizationStore();
   const { user, subscriptionPlan } = useAuthStore();
   const [search, setSearch] = useState('');
+  const [view, setView] = useState('list');
   const navigate = useNavigate();
 
   const userRole = user?.role || 'employee';
@@ -40,6 +42,33 @@ export default function Organizations({ onMenuClick }) {
         onMenuClick={onMenuClick}
       />
 
+      <div className="flex items-center gap-2 mb-5">
+        {[
+          { key: 'list', label: 'List', icon: 'lucide:list' },
+          { key: 'tree', label: 'Hierarchy', icon: 'lucide:git-branch' },
+        ].map((t) => {
+          const active = view === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setView(t.key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                active
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >
+              <Icon icon={t.icon} className="w-4 h-4" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {view === 'tree' ? (
+        <OrgTree onMenuClick={onMenuClick} embedded />
+      ) : (
+      <>
       <div className="mb-6">
         <SearchBar
           value={search}
@@ -98,6 +127,8 @@ export default function Organizations({ onMenuClick }) {
             </Card>
           ))}
         </div>
+      )}
+      </>
       )}
     </div>
   );

@@ -32,7 +32,13 @@ export const taskAPI = {
   delete: (id) => api.delete(`/tasks/${id}`),
   addSubtask: (id, data) => api.post(`/tasks/${id}/subtasks`, data),
   updateSubtask: (id, subtaskId, data) => api.put(`/tasks/${id}/subtasks/${subtaskId}`, data),
+  deleteSubtask: (id, subtaskId) => api.delete(`/tasks/${id}/subtasks/${subtaskId}`),
   addAttachment: (id, formData) => api.post(`/tasks/${id}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  // Notes
+  listNotes: (id, params) => api.get(`/tasks/${id}/notes`, { params }),
+  addNote: (id, data) => api.post(`/tasks/${id}/notes`, data),
+  updateNote: (id, noteId, data) => api.put(`/tasks/${id}/notes/${noteId}`, data),
+  deleteNote: (id, noteId) => api.delete(`/tasks/${id}/notes/${noteId}`),
   // Task timer
   getTimer: (id) => api.get(`/tasks/${id}/timer`),
   startTimer: (id) => api.post(`/tasks/${id}/timer/start`),

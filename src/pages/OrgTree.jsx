@@ -135,7 +135,7 @@ function SuperadminGroup({ root, expanded, toggle, onOrgClick }) {
   );
 }
 
-export default function OrgTree({ onMenuClick }) {
+export default function OrgTree({ onMenuClick, embedded = false }) {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const [tree, setTree] = useState(null);
@@ -197,11 +197,13 @@ export default function OrgTree({ onMenuClick }) {
 
   return (
     <div>
-      <Header
-        title="Org Tree"
-        subtitle={loading ? 'Loading…' : scopeLabel}
-        onMenuClick={onMenuClick}
-      />
+      {!embedded && (
+        <Header
+          title="Org Tree"
+          subtitle={loading ? 'Loading…' : scopeLabel}
+          onMenuClick={onMenuClick}
+        />
+      )}
 
       {!loading && tree?.roots?.length > 0 && (
         <div className="flex items-center gap-2 mb-4">
