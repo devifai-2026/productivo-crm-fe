@@ -19,6 +19,20 @@ import TaskTimer from '../components/tasks/TaskTimer';
 
 const statusOptions = ['backlog', 'todo', 'in_progress', 'in_review', 'done'];
 
+// Resolve attachment URLs that were stored as relative `/api/v1/...` paths
+// against the API origin (the CRM is served from a different origin).
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'https://www.productivo.in/api/v1').replace(/\/api\/v1\/?$/, '');
+const resolveAttachmentUrl = (url) => {
+  if (!url) return url;
+  if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`;
+  return url;
+};
+const isImageAttachment = (att) => {
+  if (att?.type?.startsWith('image/')) return true;
+  const name = att?.name || att?.filename || '';
+  return /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(name);
+};
+
 export default function TaskDetail({ onMenuClick }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -498,20 +512,46 @@ export default function TaskDetail({ onMenuClick }) {
                 Attachments
               </h3>
               <div className="space-y-2">
-                {task.attachments.map((att, i) => (
-                  <a
-                    key={i}
-                    href={att.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                  >
-                    <Icon icon="lucide:paperclip" className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                      {att.name || att.filename || 'Attachment'}
-                    </span>
-                  </a>
-                ))}
+                {task.attachments.map((att, i) => {
+                  const href = resolveAttachmentUrl(att.url);
+                  if (isImageAttachment(att)) {
+                    return (
+                      <a
+                        key={i}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden hover:border-gray-300 dark:hover:border-gray-700 transition-colors"
+                      >
+                        <img
+                          src={href}
+                          alt={att.name || att.filename || 'Attachment'}
+                          className="w-full max-h-96 object-contain bg-gray-50 dark:bg-gray-900"
+                        />
+                        <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100 dark:border-gray-800">
+                          <Icon icon="lucide:image" className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                            {att.name || att.filename || 'Attachment'}
+                          </span>
+                        </div>
+                      </a>
+                    );
+                  }
+                  return (
+                    <a
+                      key={i}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                    >
+                      <Icon icon="lucide:paperclip" className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                        {att.name || att.filename || 'Attachment'}
+                      </span>
+                    </a>
+                  );
+                })}
               </div>
             </Card>
           )}
