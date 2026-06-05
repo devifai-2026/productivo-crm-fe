@@ -12,6 +12,7 @@ import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import DatePicker from '../components/ui/DatePicker';
 import Select from '../components/ui/Select';
+import SearchableSelect from '../components/ui/SearchableSelect';
 import Button from '../components/ui/Button';
 
 export default function CreateMeeting({ onMenuClick }) {
@@ -24,6 +25,9 @@ export default function CreateMeeting({ onMenuClick }) {
   const [busy, setBusy] = useState(false);
 
   const [meetingType, setMeetingType] = useState('personal');
+  const [recurrence, setRecurrence] = useState('none'); // none | daily | weekly_mon_fri | weekly
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+  const [customMeetLink, setCustomMeetLink] = useState('');
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -70,6 +74,10 @@ export default function CreateMeeting({ onMenuClick }) {
   const updateField = (field) => (e) =>
     setForm({ ...form, [field]: e.target.value });
 
+  // SearchableSelect calls onChange(value) with the raw value (not an event).
+  const setField = (field) => (value) =>
+    setForm((f) => ({ ...f, [field]: value }));
+
   const handleAddAttendee = () => {
     if (!newAttendee.email) return;
     setAttendees([...attendees, { ...newAttendee }]);
@@ -104,6 +112,9 @@ export default function CreateMeeting({ onMenuClick }) {
       projectId: form.projectId || undefined,
       clientId: meetingType === 'client' ? form.clientId || undefined : undefined,
       attendees: finalAttendees,
+      recurrence,
+      recurrenceEndDate: recurrence !== 'none' && recurrenceEndDate ? new Date(`${recurrenceEndDate}T23:59:59`).toISOString() : undefined,
+      meetLink: customMeetLink.trim() || undefined,
     };
 
     setBusy(true);
@@ -115,18 +126,8 @@ export default function CreateMeeting({ onMenuClick }) {
       }
 
       const newId = result.data?._id;
-      if (sendWhatsapp && newId && waFeatures?.meeting_invite?.isActive) {
-        try {
-          const res = await whatsappAddonAPI.sendMeetingInvite(newId);
-          if (res.data?.success) {
-            toast.success(`WhatsApp invite sent to ${res.data.sent}/${res.data.total} attendees`);
-          } else {
-            toast.error('Meeting saved — WhatsApp send failed');
-          }
-        } catch (err) {
-          toast.error(err.response?.data?.error || 'Meeting saved — WhatsApp send failed');
-        }
-      }
+      // No auto-send on create — invites go out from the meeting page's "Send Invite".
+      toast.success('Meeting created. Open it to send invites (WhatsApp / Email).');
       navigate(`/meetings/${newId || ''}`);
     } finally {
       setBusy(false);
@@ -229,50 +230,88 @@ export default function CreateMeeting({ onMenuClick }) {
             />
           </div>
 
-          {/* Google Meet auto-generation note */}
-          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20">
-            <Icon icon="lucide:video" className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <p className="text-sm text-blue-700 dark:text-blue-300">
-              Google Meet link will be auto-generated
+          {/* Recurrence / frequency */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label="Frequency"
+              value={recurrence}
+              onChange={(e) => setRecurrence(e.target.value)}
+              options={[
+                { value: 'none', label: 'One-time' },
+                { value: 'daily', label: 'Daily' },
+                { value: 'weekly_mon_fri', label: 'Every weekday (Mon–Fri)' },
+                { value: 'weekly', label: 'Weekly' },
+              ]}
+            />
+            {recurrence !== 'none' && (
+              <DatePicker label="Repeat until" value={recurrenceEndDate} onChange={(e) => setRecurrenceEndDate(e.target.value)} />
+            )}
+          </div>
+          {recurrence !== 'none' && (
+            <p className="text-xs text-gray-400 -mt-2">
+              Recurs {recurrence === 'weekly_mon_fri' ? 'Mon–Fri' : recurrence} at {form.time || 'the set time'}
+              {recurrenceEndDate ? ` until ${recurrenceEndDate}` : ' (no end date)'}.
             </p>
+          )}
+
+          {/* Meeting link — paste your own, or leave empty to auto-generate */}
+          <div>
+            <Input
+              label="Meeting link (optional)"
+              type="url"
+              value={customMeetLink}
+              onChange={(e) => setCustomMeetLink(e.target.value)}
+              placeholder="https://meet.google.com/xxx-xxxx-xxx  (or Zoom/Teams)"
+            />
+            <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20">
+              <Icon icon="lucide:video" className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                {customMeetLink.trim()
+                  ? 'Your link will be used — no Google Meet will be created.'
+                  : 'Leave empty and a Google Meet link will be auto-generated.'}
+              </p>
+            </div>
           </div>
 
           {/* Client & Project selection */}
           {meetingType === 'client' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Select
+              <SearchableSelect
                 label="Client"
                 value={form.clientId}
-                onChange={updateField('clientId')}
+                onChange={setField('clientId')}
                 placeholder="Select client"
                 options={clients.map((c) => ({
                   value: c._id,
                   label: c.name,
+                  meta: c.email || c.companyName || c.phoneNumber,
                 }))}
                 required
               />
-              <Select
+              <SearchableSelect
                 label="Project (optional)"
                 value={form.projectId}
-                onChange={updateField('projectId')}
+                onChange={setField('projectId')}
                 placeholder="Select project"
                 options={projects.map((p) => ({
                   value: p._id,
                   label: p.name,
+                  meta: p.status,
                 }))}
               />
             </div>
           )}
 
           {meetingType === 'personal' && (
-            <Select
+            <SearchableSelect
               label="Related Project (optional)"
               value={form.projectId}
-              onChange={updateField('projectId')}
+              onChange={setField('projectId')}
               placeholder="Select project"
               options={projects.map((p) => ({
                 value: p._id,
                 label: p.name,
+                meta: p.status,
               }))}
             />
           )}
@@ -284,8 +323,8 @@ export default function CreateMeeting({ onMenuClick }) {
               <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
                 <Icon icon="lucide:check-circle" className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <p className="text-sm text-emerald-700 dark:text-emerald-300">
-                  {client.name} ({client.email}) will receive email
-                  {waActive && client.whatsappNumber ? ' + WhatsApp' : ''} notification
+                  {client.name} ({client.email}) will be added as an attendee
+                  {waActive && client.whatsappNumber ? ' (WhatsApp available)' : ''}
                 </p>
               </div>
             ) : null;
@@ -381,41 +420,14 @@ export default function CreateMeeting({ onMenuClick }) {
             </div>
 
             <p className="text-xs text-gray-400 dark:text-gray-500">
-              All attendees receive an email invite.
-              {waActive ? ' Those with a WhatsApp number also get a WhatsApp message.' : ''}
-              {' '}Attendees in the form above are included even if you haven't clicked "Add Attendee".
+              Attendees in the form above are included even if you haven't clicked "Add Attendee".
+              No invites are sent on create — open the meeting and use <strong>Send Invite</strong> to choose WhatsApp and/or Email.
             </p>
           </div>
 
-          {waFeatures?.meeting_invite?.isActive && (
-            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-900/10 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={sendWhatsapp}
-                onChange={(e) => setSendWhatsapp(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              <span className="flex-1">
-                <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                  <Icon icon="mdi:whatsapp" className="w-4 h-4" />
-                  Also send WhatsApp invite to attendees
-                </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 block">
-                  Sent only to attendees with a WhatsApp number filled in.
-                </span>
-              </span>
-            </label>
-          )}
-
           <div className="flex gap-3 pt-4">
             <Button type="submit" loading={busy || isLoading} disabled={busy || isLoading}>
-              {busy && sendWhatsapp && waFeatures?.meeting_invite?.isActive
-                ? 'Sending WhatsApp invites…'
-                : busy
-                  ? 'Saving meeting…'
-                  : sendWhatsapp && waFeatures?.meeting_invite?.isActive
-                    ? 'Schedule & Send Invite'
-                    : 'Schedule Meeting'}
+              {busy ? 'Saving meeting…' : 'Schedule Meeting'}
             </Button>
             <Button variant="outline" type="button" onClick={() => navigate('/meetings')} disabled={busy}>
               Cancel

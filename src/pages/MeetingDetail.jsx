@@ -6,13 +6,19 @@ import toast from 'react-hot-toast';
 import useMeetingStore from '../store/meetingStore';
 import useAuthStore from '../store/authStore';
 import useWhatsappAddonStore from '../store/whatsappAddonStore';
-import { whatsappAddonAPI } from '../services/api';
+import { whatsappAddonAPI, meetingAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import Avatar from '../components/ui/Avatar';
 import Modal from '../components/ui/Modal';
+
+// JS Date → "YYYY-MM-DDTHH:mm" in local time for a datetime-local input.
+function toLocalInput(d) {
+  const z = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
+}
 
 export default function MeetingDetail({ onMenuClick }) {
   const { id } = useParams();
@@ -22,7 +28,10 @@ export default function MeetingDetail({ onMenuClick }) {
   const { features: waFeatures, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
   const canManage = user?.role === 'superadmin' || user?.role === 'org_admin';
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [sendingInvite, setSendingInvite] = useState(false);
+  const [rescheduling, setRescheduling] = useState(false);
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [rescheduleVal, setRescheduleVal] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   // MOM state
   const [editingNotes, setEditingNotes] = useState(false);
@@ -36,19 +45,66 @@ export default function MeetingDetail({ onMenuClick }) {
     return () => clearCurrent();
   }, [id]);
 
-  const handleSendInviteWhatsapp = async () => {
-    setSendingInvite(true);
+  // Per-channel invite send. `channel` is 'whatsapp' or 'email'. Disables after success.
+  const [sendingChannel, setSendingChannel] = useState(null);
+  const handleSendChannel = async (channel) => {
+    setSendingChannel(channel);
     try {
-      const res = await whatsappAddonAPI.sendMeetingInvite(id);
+      const res = await meetingAPI.sendInvite(id, [channel]);
+      const s = res.data?.data;
       if (res.data?.success) {
-        toast.success(`Invite sent to ${res.data.sent} of ${res.data.total} attendees`);
+        const n = channel === 'whatsapp' ? s.whatsapp.sent : s.email.sent;
+        toast.success(`${channel === 'whatsapp' ? 'WhatsApp' : 'Email'} invite sent to ${n} attendee(s)`);
+        fetchMeeting(id); // refresh invitesSent so the button disables
       } else {
-        toast.error(res.data?.error || 'Failed to send invite');
+        toast.error(s?.errors?.[0] || res.data?.error || 'Failed to send');
       }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to send invite');
+      toast.error(err.response?.data?.error || 'Failed to send');
     } finally {
-      setSendingInvite(false);
+      setSendingChannel(null);
+    }
+  };
+
+  // Open the reschedule modal, prefilled with the meeting's current time.
+  const openReschedule = () => {
+    const current = currentMeeting?.scheduledAt ? new Date(currentMeeting.scheduledAt) : new Date();
+    setRescheduleVal(toLocalInput(current));
+    setShowReschedule(true);
+  };
+
+  const handleRescheduleWhatsapp = async () => {
+    if (!rescheduleVal) { toast.error('Please pick a date and time'); return; }
+    const scheduledAt = new Date(rescheduleVal);
+    if (isNaN(scheduledAt.getTime())) { toast.error('Invalid date/time'); return; }
+    setRescheduling(true);
+    try {
+      const res = await whatsappAddonAPI.rescheduleMeeting(id, { scheduledAt: scheduledAt.toISOString() });
+      if (res.data?.success) {
+        toast.success(`Reschedule sent to ${res.data.sent} attendee(s)`);
+        setShowReschedule(false);
+        fetchMeeting(id);
+      } else toast.error(res.data?.error || 'Failed to reschedule');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to reschedule');
+    } finally {
+      setRescheduling(false);
+    }
+  };
+
+  const handleCancelWhatsapp = async () => {
+    if (!window.confirm('Cancel this meeting and notify attendees on WhatsApp?')) return;
+    setCancelling(true);
+    try {
+      const res = await whatsappAddonAPI.cancelMeeting(id);
+      if (res.data?.success) {
+        toast.success(`Cancellation sent to ${res.data.sent} attendee(s)`);
+        fetchMeeting(id);
+      } else toast.error(res.data?.error || 'Failed to cancel');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to cancel');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -151,17 +207,53 @@ export default function MeetingDetail({ onMenuClick }) {
         ]}
         onMenuClick={onMenuClick}
       >
-        {canManage && waFeatures?.meeting_invite?.isActive && (
-          <Button
-            variant="outline"
-            size="sm"
-            icon="mdi:whatsapp"
-            loading={sendingInvite}
-            onClick={handleSendInviteWhatsapp}
-            className="text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900"
-          >
-            Send Invite
-          </Button>
+        {canManage && meeting.status !== 'cancelled' && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              icon="mdi:whatsapp"
+              loading={sendingChannel === 'whatsapp'}
+              disabled={meeting.invitesSent?.whatsapp || sendingChannel !== null}
+              onClick={() => handleSendChannel('whatsapp')}
+              className="text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border-emerald-200 dark:border-emerald-900"
+            >
+              {meeting.invitesSent?.whatsapp ? 'WhatsApp Sent ✓' : 'Send WhatsApp'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon="lucide:mail"
+              loading={sendingChannel === 'email'}
+              disabled={meeting.invitesSent?.email || sendingChannel !== null}
+              onClick={() => handleSendChannel('email')}
+              className="text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-200 dark:border-blue-900"
+            >
+              {meeting.invitesSent?.email ? 'Email Sent ✓' : 'Send Email'}
+            </Button>
+          </>
+        )}
+        {canManage && waFeatures?.meeting_invite?.isActive && meeting.status !== 'cancelled' && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              icon="lucide:calendar-clock"
+              onClick={openReschedule}
+            >
+              Reschedule
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon="lucide:calendar-x"
+              loading={cancelling}
+              onClick={handleCancelWhatsapp}
+              className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-900"
+            >
+              Cancel Meeting
+            </Button>
+          </>
         )}
         {canManage && (
           <Button
@@ -418,6 +510,28 @@ export default function MeetingDetail({ onMenuClick }) {
         <div className="flex gap-3 justify-end">
           <Button variant="outline" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
           <Button variant="danger" onClick={handleDelete}>Delete</Button>
+        </div>
+      </Modal>
+
+      {/* Reschedule modal — calendar date & time picker (no prompt) */}
+      <Modal isOpen={showReschedule} onClose={() => setShowReschedule(false)} title="Reschedule Meeting" size="sm">
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Pick a new date and time for “{meeting.title}”. Attendees will be notified on WhatsApp.
+        </p>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">New date &amp; time</label>
+        <input
+          type="datetime-local"
+          autoFocus
+          value={rescheduleVal}
+          min={toLocalInput(new Date())}
+          onChange={(e) => setRescheduleVal(e.target.value)}
+          className="w-full px-3 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-100 [color-scheme:dark]"
+        />
+        <div className="flex gap-3 justify-end mt-6">
+          <Button variant="outline" onClick={() => setShowReschedule(false)}>Cancel</Button>
+          <Button icon="lucide:calendar-check" loading={rescheduling} onClick={handleRescheduleWhatsapp}>
+            Confirm reschedule
+          </Button>
         </div>
       </Modal>
     </div>

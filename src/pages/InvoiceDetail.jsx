@@ -443,9 +443,15 @@ export default function InvoiceDetail({ onMenuClick }) {
       {/* Summary strip — always visible at top on mobile */}
       <div className="mb-4 p-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
         <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Badge status={invoice.status} size="md" />
-            <Badge status={paymentStatus} size="md" />
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Invoice</span>
+              <Badge status={invoice.status} size="md" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Payment</span>
+              <Badge status={paymentStatus} size="md" />
+            </div>
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-gray-900 dark:text-gray-50">
@@ -495,11 +501,11 @@ export default function InvoiceDetail({ onMenuClick }) {
           <Card className="hidden lg:block">
             <div className="space-y-4">
               <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Status</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Invoice Status</p>
                 <Badge status={invoice.status} size="md" />
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Payment</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Payment Status</p>
                 <Badge status={paymentStatus} size="md" />
               </div>
               <div>

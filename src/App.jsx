@@ -45,6 +45,7 @@ import MyPlan from './pages/MyPlan';
 import DataUsage from './pages/DataUsage';
 import Attendance from './pages/Attendance';
 import Timesheet from './pages/Timesheet';
+import DailyLogger from './pages/DailyLogger';
 import OrgTree from './pages/OrgTree';
 import NotFound from './pages/NotFound';
 
@@ -170,6 +171,7 @@ function AppRoutes() {
                   <Route path="/usage" element={<DataUsage onMenuClick={onMenuClick} />} />
                   <Route path="/attendance" element={<Attendance onMenuClick={onMenuClick} />} />
                   <Route path="/timesheet" element={<Timesheet onMenuClick={onMenuClick} />} />
+                  <Route path="/daily-logger" element={<DailyLogger onMenuClick={onMenuClick} />} />
                   <Route path="/org-tree" element={<OrgTree onMenuClick={onMenuClick} />} />
 
                   <Route path="/enquiries" element={

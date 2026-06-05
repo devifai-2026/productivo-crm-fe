@@ -70,7 +70,7 @@ export default function Clients({ onMenuClick }) {
       !search ||
       client.name?.toLowerCase().includes(search.toLowerCase()) ||
       client.email?.toLowerCase().includes(search.toLowerCase()) ||
-      client.company?.toLowerCase().includes(search.toLowerCase());
+      client.companyName?.toLowerCase().includes(search.toLowerCase());
     const matchesStage = !stageFilter || client.pipelineStage === stageFilter;
     return matchesSearch && matchesStage;
   });
@@ -204,15 +204,17 @@ export default function Clients({ onMenuClick }) {
           onAction={() => navigate('/clients/new')}
         />
       ) : viewMode === 'pipeline' ? (
-        /* Pipeline / Kanban View */
-        <div className="overflow-x-auto pb-4 -mx-4 px-4 lg:-mx-0 lg:px-0">
-          <div className="flex gap-4 min-w-max">
+        /* Pipeline / Kanban View — fixed-height board so the horizontal scrollbar
+           stays reachable without scrolling to the bottom of the page. Each column
+           scrolls its own cards vertically. */
+        <div className="overflow-x-auto overflow-y-hidden pb-3 -mx-4 px-4 lg:-mx-0 lg:px-0">
+          <div className="flex gap-4 min-w-max h-[calc(100vh-22rem)] min-h-[360px]">
             {PIPELINE_STAGES.map((stage) => {
               const stageClients = getClientsByStage(stage.key);
               return (
                 <div
                   key={stage.key}
-                  className={`w-72 rounded-2xl border border-gray-100 dark:border-gray-800 border-t-4 ${stageColorClasses[stage.key]} ${stageBgClasses[stage.key]} flex flex-col`}
+                  className={`w-72 h-full rounded-2xl border border-gray-100 dark:border-gray-800 border-t-4 ${stageColorClasses[stage.key]} ${stageBgClasses[stage.key]} flex flex-col`}
                 >
                   {/* Column header */}
                   <div className="px-4 py-3 flex items-center justify-between">
@@ -227,7 +229,7 @@ export default function Clients({ onMenuClick }) {
                   </div>
 
                   {/* Cards */}
-                  <div className="px-3 pb-3 space-y-2.5 flex-1 min-h-[100px]">
+                  <div className="px-3 pb-3 space-y-2.5 flex-1 min-h-[100px] overflow-y-auto">
                     {stageClients.length === 0 ? (
                       <div className="flex items-center justify-center h-20">
                         <p className="text-xs text-gray-400 dark:text-gray-500">No clients</p>
@@ -259,9 +261,9 @@ export default function Clients({ onMenuClick }) {
                                     {client.organizationId.name}
                                   </p>
                                 )}
-                                {client.company && (
+                                {client.companyName && (
                                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                    {client.company}
+                                    {client.companyName}
                                   </p>
                                 )}
                               </div>
@@ -377,7 +379,7 @@ export default function Clients({ onMenuClick }) {
                           </td>
                           <td className="px-5 py-3.5">
                             <span className="text-sm text-gray-600 dark:text-gray-400">
-                              {client.company || '--'}
+                              {client.companyName || '--'}
                             </span>
                           </td>
                           <td className="px-5 py-3.5">
@@ -391,8 +393,10 @@ export default function Clients({ onMenuClick }) {
                             </span>
                           </td>
                           <td className="px-5 py-3.5">
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                              {client.phone || '--'}
+                            <span className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                              {client.phoneNumber
+                                ? `${client.countryCode || ''} ${client.phoneNumber}`.trim()
+                                : '--'}
                             </span>
                           </td>
                           <td className="px-5 py-3.5">

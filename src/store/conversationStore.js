@@ -73,29 +73,95 @@ const useConversationStore = create((set, get) => {
     }
   },
 
-  // Called from socket.io or polling — append inbound message
+  sendTemplate: async (phone, templateId, variables = []) => {
+    set({ isSending: true });
+    try {
+      const res = await whatsappAPI.sendTemplate(phone, { templateId, variables });
+      const newMsg = res.data?.data;
+      if (newMsg) {
+        set((state) => ({
+          messages: [...state.messages, newMsg],
+          conversations: state.conversations.map((c) =>
+            c.phone === phone
+              ? {
+                  ...c,
+                  lastMessageAt: newMsg.timestamp,
+                  lastMessagePreview: newMsg.content?.text || '[template]',
+                  lastMessageDirection: 'outbound',
+                }
+              : c
+          ),
+          isSending: false,
+        }));
+      } else {
+        set({ isSending: false });
+      }
+      return { success: true };
+    } catch (err) {
+      set({ isSending: false });
+      return { success: false, error: err.response?.data?.error || 'Failed to send template' };
+    }
+  },
+
+  // Called from socket.io (message:new) or polling — append a message (either direction)
+  // and keep the conversation list in sync. Handles brand-new senders too.
   appendInboundMessage: (msg) => {
-    const { currentPhone, messages, conversations } = get();
+    const { currentPhone, messages, conversations, fetchConversations } = get();
+    const isInbound = msg.direction === 'inbound';
+
+    // Add to the open thread if it belongs to it. Dedup defensively: the same message
+    // can arrive via the optimistic send AND the socket echo. Match on _id, waMessageId,
+    // or (same direction + same text within a few seconds) to absorb races.
     if (msg.phone === currentPhone) {
-      // Avoid duplicates
-      if (!messages.find((m) => m._id === msg._id || m.waMessageId === msg.waMessageId)) {
+      const dupe = messages.find((m) =>
+        (m._id && msg._id && m._id === msg._id) ||
+        (m.waMessageId && msg.waMessageId && m.waMessageId === msg.waMessageId) ||
+        (m.direction === msg.direction &&
+          (m.content?.text || '') === (msg.content?.text || '') &&
+          Math.abs(new Date(m.timestamp) - new Date(msg.timestamp)) < 10000)
+      );
+      if (!dupe) {
         set({ messages: [...messages, msg] });
       }
     }
-    // Update conversation preview
+
+    const exists = conversations.some((c) => c.phone === msg.phone);
+    if (!exists) {
+      // New sender not in the list yet — pull the fresh list so it shows up immediately.
+      fetchConversations();
+      return;
+    }
+
+    const preview = msg.content?.text || `[${msg.type}]`;
     set({
-      conversations: conversations.map((c) =>
-        c.phone === msg.phone
-          ? {
-              ...c,
-              lastMessageAt: msg.timestamp,
-              lastMessagePreview: msg.content?.text || `[${msg.type}]`,
-              lastMessageDirection: 'inbound',
-              unreadCount: msg.phone !== currentPhone ? (c.unreadCount || 0) + 1 : 0,
-            }
-          : c
-      ),
+      conversations: conversations
+        .map((c) =>
+          c.phone === msg.phone
+            ? {
+                ...c,
+                lastMessageAt: msg.timestamp,
+                lastMessagePreview: preview,
+                lastMessageDirection: msg.direction || (isInbound ? 'inbound' : 'outbound'),
+                // Only bump unread for inbound messages to a chat that isn't currently open
+                unreadCount:
+                  isInbound && msg.phone !== currentPhone
+                    ? (c.unreadCount || 0) + 1
+                    : c.unreadCount || 0,
+              }
+            : c
+        )
+        // Re-sort so the most recent conversation floats to top (WhatsApp behaviour)
+        .sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0)),
     });
+  },
+
+  // Update delivery/read status of an outbound message (from socket message:status)
+  updateMessageStatus: (waMessageId, status) => {
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.waMessageId === waMessageId ? { ...m, status } : m
+      ),
+    }));
   },
 
   clearMessages: () => set({ messages: [], currentPhone: null }),

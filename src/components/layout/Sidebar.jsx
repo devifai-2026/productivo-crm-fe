@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
 import useWhatsappAddonStore from '../../store/whatsappAddonStore';
+import useConversationStore from '../../store/conversationStore';
 import Avatar from '../ui/Avatar';
 
 // Routes accessible on free plan (superadmin)
@@ -25,6 +26,7 @@ const allNavItems = [
   { path: '/usage',         label: 'Data & Activity', icon: 'lucide:activity',       roles: ['superadmin', 'product_owner'] },
   { path: '/attendance',    label: 'Attendance',      icon: 'lucide:clock',          roles: ['superadmin', 'org_admin', 'employee'] },
   { path: '/timesheet',     label: 'Timesheet',       icon: 'lucide:clipboard-list', roles: ['superadmin', 'org_admin'] },
+  { path: '/daily-logger',  label: 'Daily Logger',    icon: 'lucide:notebook-pen',   roles: ['superadmin', 'org_admin', 'employee'] },
   // product_owner platform-level
   { path: '/users',         label: 'Accounts',        icon: 'lucide:shield-check',   roles: ['product_owner'] },
   { path: '/enquiries',     label: 'Leads',           icon: 'mdi:email-newsletter',  roles: ['product_owner'] },
@@ -46,6 +48,19 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const isPro = !isSuperadmin || subscriptionPlan === 'pro' || subscriptionPlan === 'enterprise';
 
   const { isActive: waActive, isFetched: waFetched, fetch: fetchWaAddon } = useWhatsappAddonStore();
+
+  // Total WhatsApp unread, for the sidebar badge. Poll lightly so it stays fresh
+  // even when the user isn't on the Conversations page.
+  const conversations = useConversationStore((s) => s.conversations);
+  const fetchConversations = useConversationStore((s) => s.fetchConversations);
+  const waUnread = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  const canSeeWa = ['superadmin', 'org_admin'].includes(userRole);
+  useEffect(() => {
+    if (!canSeeWa) return;
+    fetchConversations();
+    const id = setInterval(fetchConversations, 15000);
+    return () => clearInterval(id);
+  }, [canSeeWa, fetchConversations]);
 
   const navItems = allNavItems.filter((item) => {
     if (!item.roles.includes(userRole)) return false;
@@ -191,8 +206,19 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                 ${collapsed ? 'justify-center px-2' : ''}`}
               title={collapsed ? item.label : undefined}
             >
-              <Icon icon={item.icon} className="w-5 h-5 shrink-0" />
+              <span className="relative shrink-0">
+                <Icon icon={item.icon} className="w-5 h-5" />
+                {/* When collapsed, show a small dot on the WhatsApp icon for unread */}
+                {collapsed && isWaItem && waUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-white dark:ring-gray-950" />
+                )}
+              </span>
               {!collapsed && <span className="flex-1">{item.label}</span>}
+              {!collapsed && isWaItem && waUnread > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-500 text-white shrink-0 min-w-[18px] text-center">
+                  {waUnread > 99 ? '99+' : waUnread}
+                </span>
+              )}
               {!collapsed && isPlanItem && !isPro && (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-violet-600 text-white shrink-0">
                   Upgrade

@@ -87,6 +87,7 @@ export const meetingAPI = {
   addNotes: (id, data) => api.put(`/meetings/${id}/notes`, data),
   generateNotesPdf: (id) => api.post(`/meetings/${id}/notes/generate-pdf`),
   sendNotes: (id) => api.post(`/meetings/${id}/notes/send`),
+  sendInvite: (id, channels) => api.post(`/meetings/${id}/send-invite`, { channels }),
 };
 
 export const invoiceAPI = {
@@ -159,6 +160,13 @@ export const whatsappAPI = {
   markRead: (phone) => api.patch(`/whatsapp/conversations/${phone}/mark-read`),
   sendMessage: (phone, data) => api.post(`/whatsapp/conversations/${phone}/send`, data),
 
+  // Templates
+  getTemplates: () => api.get('/whatsapp/templates'),
+  sendTemplate: (phone, data) => api.post(`/whatsapp/conversations/${phone}/send-template`, data),
+
+  // Full message logs (incoming + outgoing + delivery status)
+  getMessageLogs: (params) => api.get('/whatsapp/message-logs', { params }),
+
   // Token exchange
   exchangeToken: (shortLivedToken) => api.post('/whatsapp/token/exchange', { shortLivedToken }),
 
@@ -218,6 +226,21 @@ export const whatsappAddonAPI = {
   sendInvoice: (invoiceId) => api.post(`/whatsapp-addons/send-invoice/${invoiceId}`),
   sendTaskReminder: (taskId, data) => api.post(`/whatsapp-addons/send-task-reminder/${taskId}`, data),
   sendMeetingInvite: (meetingId) => api.post(`/whatsapp-addons/send-meeting-invite/${meetingId}`),
+  rescheduleMeeting: (meetingId, data) => api.post(`/whatsapp-addons/reschedule-meeting/${meetingId}`, data),
+  cancelMeeting: (meetingId) => api.post(`/whatsapp-addons/cancel-meeting/${meetingId}`),
   // Recent sends (activity logs)
   getLogs: (params = {}) => api.get('/whatsapp-addons/logs', { params }),
+};
+
+export const dailyLogAPI = {
+  getByDate: (date) => api.get(`/daily-log/${date}`),
+  listRange: (params) => api.get('/daily-log', { params }),
+  update: (date, data) => api.patch(`/daily-log/${date}`, data),
+  addTodo: (date, text) => api.post(`/daily-log/${date}/todos`, { text }),
+  toggleTodo: (date, todoId) => api.patch(`/daily-log/${date}/todos/${todoId}/toggle`),
+  deleteTodo: (date, todoId) => api.delete(`/daily-log/${date}/todos/${todoId}`),
+  addNote: (date, text) => api.post(`/daily-log/${date}/notes`, { text }),
+  deleteNote: (date, noteId) => api.delete(`/daily-log/${date}/notes/${noteId}`),
+  carryOverPreview: (date) => api.get(`/daily-log/${date}/carry-over-preview`),
+  carryOver: (date, texts) => api.post(`/daily-log/${date}/carry-over`, { texts }),
 };
