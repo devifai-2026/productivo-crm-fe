@@ -1,0 +1,11 @@
+# Netlify build + SPA routing for the Productivo CRM (Vite + React Router)
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Single-page app: every route falls back to index.html so client-side routes
+# (e.g. /login, /conversations, /daily-logger) work on direct load / refresh.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

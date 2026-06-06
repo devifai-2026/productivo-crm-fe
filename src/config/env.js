@@ -1,4 +1,4 @@
-const isProd = false;
+const isProd = true;
 
 export const API_BASE_URL = isProd
   ? 'https://www.productivo.in/api/v1'
