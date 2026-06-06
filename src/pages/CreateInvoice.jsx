@@ -44,7 +44,7 @@ export default function CreateInvoice({ onMenuClick }) {
   const [items, setItems] = useState([{ description: '', quantity: 1, rate: 0 }]);
   const [paymentAccounts, setPaymentAccounts] = useState([]);
   const [organizations, setOrganizations] = useState([]);
-  const [orgTax, setOrgTax] = useState(18);
+  const [orgTax, setOrgTax] = useState(0);
   const [error, setError] = useState('');
 
   useEffect(() => {

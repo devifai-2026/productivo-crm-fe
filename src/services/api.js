@@ -7,6 +7,7 @@ export const authAPI = {
   signupVerifyOtp: (data) => api.post('/auth/signup/verify-otp', data),
   getProfile: () => api.get('/auth/profile'),
   getSubscription: () => api.get('/subscription'),
+  googleStatus: () => api.get('/auth/google/status'),
   updateProfile: (data) => api.put('/auth/profile', data),
   setupBiometric: (data) => api.put('/auth/biometric', data),
   setupMpin: (data) => api.post('/auth/mpin/setup', data),

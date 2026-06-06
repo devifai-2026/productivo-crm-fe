@@ -5,6 +5,8 @@ import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
 import useWhatsappAddonStore from '../../store/whatsappAddonStore';
 import useConversationStore from '../../store/conversationStore';
+import { authAPI } from '../../services/api';
+import { API_BASE_URL } from '../../config/env';
 import Avatar from '../ui/Avatar';
 
 // Routes accessible on free plan (superadmin)
@@ -61,6 +63,24 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
     const id = setInterval(fetchConversations, 15000);
     return () => clearInterval(id);
   }, [canSeeWa, fetchConversations]);
+
+  // Google re-auth control — only for the workspace owner account.
+  const isGoogleAdmin = user?.email === 'dsubhojit062@gmail.com';
+  const [googleConnected, setGoogleConnected] = useState(null); // null=unknown, true/false
+  useEffect(() => {
+    if (!isGoogleAdmin) return;
+    let alive = true;
+    authAPI.googleStatus()
+      .then((res) => { if (alive) setGoogleConnected(res.data?.connected === true); })
+      .catch(() => { if (alive) setGoogleConnected(false); });
+    return () => { alive = false; };
+  }, [isGoogleAdmin]);
+
+  const reauthGoogle = () => {
+    // Opens the backend OAuth flow (redirects to Google → callback saves the token).
+    const base = API_BASE_URL.replace(/\/$/, '');
+    window.open(`${base}/auth/google`, '_blank', 'noopener');
+  };
 
   const navItems = allNavItems.filter((item) => {
     if (!item.roles.includes(userRole)) return false;
@@ -247,6 +267,38 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
           <Icon icon={isDark ? 'lucide:sun' : 'lucide:moon'} className="w-5 h-5 shrink-0" />
           {!collapsed && <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>}
         </button>
+
+        {/* Google re-auth — only for the workspace owner, shown before Settings.
+            Badge appears red when the Google token is disconnected (invoices/PDF break). */}
+        {isGoogleAdmin && (
+          <button
+            onClick={reauthGoogle}
+            title={collapsed ? 'Reconnect Google' : undefined}
+            className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 w-full
+              ${googleConnected === false
+                ? 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-gray-200'}
+              ${collapsed ? 'justify-center px-2' : ''}`}
+          >
+            <span className="relative shrink-0">
+              <Icon icon="logos:google-icon" className="w-5 h-5" />
+              {collapsed && googleConnected === false && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-gray-950" />
+              )}
+            </span>
+            {!collapsed && <span className="flex-1 text-left">Reconnect Google</span>}
+            {!collapsed && googleConnected === false && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-red-500 text-white shrink-0">
+                Action needed
+              </span>
+            )}
+            {!collapsed && googleConnected === true && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 shrink-0">
+                Connected
+              </span>
+            )}
+          </button>
+        )}
 
         {bottomItems.map((item) => {
           // My Plan only visible to superadmin (isSuperadmin already accounts for user?.role)
