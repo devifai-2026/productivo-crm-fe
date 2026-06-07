@@ -268,6 +268,7 @@ export default function Conversations({ onMenuClick }) {
     sendTemplate,
     appendInboundMessage,
     updateMessageStatus,
+    clearMessages,
   } = useConversationStore();
 
   const [search, setSearch]           = useState('');
@@ -380,6 +381,15 @@ export default function Conversations({ onMenuClick }) {
     [fetchMessages, markRead]
   );
 
+  // Back to the list (mobile) — clears the open chat so the list pane shows again.
+  const closeConversation = useCallback(() => {
+    clearMessages();
+    setPendingContact(null);
+    setShowChatSearch(false);
+    setChatSearch('');
+    setSendError('');
+  }, [clearMessages]);
+
   const handleSend = async () => {
     const text = messageText.trim();
     if (!text || !currentPhone) return;
@@ -435,17 +445,23 @@ export default function Conversations({ onMenuClick }) {
       })
     : messages;
 
+  // On mobile, an open chat takes over the full screen — hide the page header and
+  // tab bar so it reads like the WhatsApp chat screen. They stay visible on desktop.
+  const chatFullScreenOnMobile = activeTab === 'chats' && !!currentPhone;
+
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] lg:h-[calc(100vh-4rem)] overflow-hidden">
-      <Header
-        title="WhatsApp"
-        subtitle={activeTab === 'chats' ? (totalUnread > 0 ? `${totalUnread} unread` : 'Conversations') : 'Sent logs'}
-        onMenuClick={onMenuClick}
-      />
+      <div className={chatFullScreenOnMobile ? 'hidden lg:block' : ''}>
+        <Header
+          title="WhatsApp"
+          subtitle={activeTab === 'chats' ? (totalUnread > 0 ? `${totalUnread} unread` : 'Conversations') : 'Sent logs'}
+          onMenuClick={onMenuClick}
+        />
+      </div>
 
       {/* Tab switcher. Chats + Webhook Logs always available; addon "Logs" only when an addon is active.
           New Chat button sits on the far right, on the same level as the tabs. */}
-      <div className="flex items-center justify-between px-4 pt-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950">
+      <div className={`${chatFullScreenOnMobile ? 'hidden lg:flex' : 'flex'} items-center justify-between px-4 pt-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950`}>
         <div className="flex items-center gap-1">
           {[
             { id: 'chats',    label: 'Chats',        icon: 'lucide:message-circle', show: true },
@@ -494,8 +510,10 @@ export default function Conversations({ onMenuClick }) {
         </div>
       ) : (
       <div className="flex flex-1 overflow-hidden">
-        {/* ── Left: Conversation list ── */}
-        <aside className="w-80 shrink-0 flex flex-col border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950">
+        {/* ── Left: Conversation list ──
+            Mobile: full-width, and hidden once a chat is open (WhatsApp-style).
+            Desktop (lg+): fixed-width column, always visible alongside the chat. */}
+        <aside className={`${currentPhone ? 'hidden lg:flex' : 'flex'} w-full lg:w-80 shrink-0 flex-col border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950`}>
           {/* Search */}
           <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
             <div className="relative">
@@ -535,8 +553,10 @@ export default function Conversations({ onMenuClick }) {
           </div>
         </aside>
 
-        {/* ── Right: Chat area ── */}
-        <main className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900 min-w-0">
+        {/* ── Right: Chat area ──
+            Mobile: full-screen once a chat is open; hidden (list takes over) when none.
+            Desktop (lg+): always shown next to the list, with an empty-state placeholder. */}
+        <main className={`${currentPhone ? 'flex' : 'hidden lg:flex'} flex-1 flex-col bg-gray-50 dark:bg-gray-900 min-w-0`}>
           {!currentPhone ? (
             <div className="flex-1 flex items-center justify-center">
               <EmptyState
@@ -549,6 +569,14 @@ export default function Conversations({ onMenuClick }) {
             <>
               {/* Chat header */}
               <div className="flex items-center gap-3 px-4 py-2.5 bg-white/80 dark:bg-gray-950/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-800/60 shadow-sm z-10">
+                {/* Back to list — mobile only */}
+                <button
+                  onClick={closeConversation}
+                  title="Back to chats"
+                  className="lg:hidden -ml-1.5 p-1.5 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
+                >
+                  <Icon icon="lucide:arrow-left" className="w-5 h-5" />
+                </button>
                 <div className="relative shrink-0">
                   <Avatar name={displayName(activeConv || { phone: currentPhone })} size="md" />
                   <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-gray-950" />

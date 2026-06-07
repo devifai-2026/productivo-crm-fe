@@ -186,6 +186,8 @@ export const superAdminAPI = {
   getOverview: () => api.get('/superadmin/overview'),
   getLogs: (params) => api.get('/superadmin/logs', { params }),
   getPayments: (params) => api.get('/superadmin/payments', { params }),
+  // status = comma list e.g. 'pending,failed'; or pass { id } to delete one
+  deletePayments: (params) => api.delete('/superadmin/payments', { params }),
   blockAccount: (id) => api.patch(`/superadmin/accounts/${id}/block`),
   deleteAccount: (id) => api.delete(`/superadmin/accounts/${id}`),
 };

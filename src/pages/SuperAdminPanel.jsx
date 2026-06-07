@@ -1,6 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { format, parseISO } from 'date-fns';
+import { io } from 'socket.io-client';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { SOCKET_URL } from '../config/env';
 import { superAdminAPI, featureFlagAPI } from '../services/api';
 import Header from '../components/layout/Header';
 import Card from '../components/ui/Card';
@@ -8,6 +12,10 @@ import Badge from '../components/ui/Badge';
 import Select from '../components/ui/Select';
 import DatePicker from '../components/ui/DatePicker';
 import Spinner from '../components/ui/Spinner';
+import {
+  GrafanaShell, GrafanaPanel, GrafanaStat, GrafanaBar, GrafanaDonut, GrafanaMultiBar, LiveDot,
+} from '../components/grafana/GrafanaKit';
+import { NEON, SERIES_COLORS, grafanaTooltip } from '../components/grafana/grafanaTheme';
 
 function StatCard({ label, value, icon, color = 'blue', sub }) {
   const colors = {
@@ -67,11 +75,20 @@ export default function SuperAdminPanel({ onMenuClick }) {
   const [logSuccess, setLogSuccess] = useState('');
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingLogs, setLoadingLogs] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+  // Initial tab can be deep-linked via ?tab= (e.g. from the Dashboard "Management" links).
+  const [searchParams] = useSearchParams();
+  const VALID_TABS = ['overview', 'db', 'usage', 'payments', 'logs', 'orgs', 'enquiries', 'features'];
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = searchParams.get('tab');
+    return VALID_TABS.includes(t) ? t : 'overview';
+  });
   const [payments, setPayments] = useState(null);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [paymentPage, setPaymentPage] = useState(1);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
+  const [deletingTxns, setDeletingTxns] = useState(false);
+  const [live, setLive] = useState(false);
+  const activeTabRef = useRef('overview');
 
   // Feature flags state
   const [waFlags, setWaFlags] = useState([]);
@@ -164,6 +181,77 @@ export default function SuperAdminPanel({ onMenuClick }) {
   useEffect(() => { if (activeTab === 'logs') fetchLogs(1); }, [activeTab, fetchLogs]);
   useEffect(() => { if (activeTab === 'payments') fetchPayments(1); }, [activeTab, fetchPayments]);
   useEffect(() => { if (activeTab === 'features') fetchWaFlags(); }, [activeTab, fetchWaFlags]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+  // Live binding — join the platform-wide admin room for real-time stat pushes.
+  useEffect(() => {
+    const socket = io(SOCKET_URL, { query: { admin: '1' }, transports: ['websocket', 'polling'] });
+    socket.on('connect', () => setLive(true));
+    socket.on('disconnect', () => setLive(false));
+    // Payment mutations (delete, webhook) → refresh the relevant views live.
+    socket.on('admin:payments', () => {
+      fetchOverview();
+      if (activeTabRef.current === 'payments') fetchPayments(1);
+    });
+    return () => socket.disconnect();
+  }, [fetchPayments]);
+
+  // Bulk-delete pending + failed transactions (keeps paid). Confirmed inline.
+  const handleDeleteTxns = async () => {
+    const n = (payments?.summary?.pending || 0) + (payments?.summary?.failed || 0);
+    if (!n) return;
+    if (!window.confirm(`Delete ${n} pending + failed transaction(s)? Paid records are kept. This cannot be undone.`)) return;
+    setDeletingTxns(true);
+    try {
+      await superAdminAPI.deletePayments({ status: 'pending,failed' });
+      await fetchPayments(1);
+      await fetchOverview();
+    } catch {
+      // surfaced by the empty refresh
+    }
+    setDeletingTxns(false);
+  };
+
+  // Derived charts for the Activity Logs tab — computed from the loaded page.
+  const logStats = useMemo(() => {
+    const statusBuckets = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 };
+    const methodCount = {};
+    let ok = 0, err = 0;
+    // requests-over-time: bucket by minute (logs are newest-first → reverse for chrono)
+    const byMin = new Map();
+    [...logs].reverse().forEach((l) => {
+      if (l.success) ok++; else err++;
+      if (logType === 'api') {
+        const s = l.statusCode || 0;
+        const b = s >= 500 ? '5xx' : s >= 400 ? '4xx' : s >= 300 ? '3xx' : '2xx';
+        statusBuckets[b]++;
+        methodCount[l.method || '—'] = (methodCount[l.method || '—'] || 0) + 1;
+      }
+      if (l.createdAt) {
+        const d = new Date(l.createdAt);
+        const key = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        byMin.set(key, (byMin.get(key) || 0) + 1);
+      }
+    });
+    const latencies = logs.map((l) => l.durationMs).filter((m) => typeof m === 'number');
+    const avgMs = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : 0;
+    const maxMs = latencies.length ? Math.max(...latencies) : 0;
+    return {
+      statusDonut: [
+        { name: '2xx', value: statusBuckets['2xx'], color: NEON.green },
+        { name: '3xx', value: statusBuckets['3xx'], color: NEON.cyan },
+        { name: '4xx', value: statusBuckets['4xx'], color: NEON.amber },
+        { name: '5xx', value: statusBuckets['5xx'], color: NEON.red },
+      ].filter((d) => d.value > 0),
+      okErrDonut: [
+        { name: 'OK', value: ok, color: NEON.green },
+        { name: 'Error', value: err, color: NEON.red },
+      ].filter((d) => d.value > 0),
+      methodBars: Object.entries(methodCount).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+      volume: Array.from(byMin, ([min, count]) => ({ min, count })),
+      avgMs, maxMs, ok, err,
+    };
+  }, [logs, logType]);
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: 'lucide:layout-dashboard' },
@@ -187,21 +275,31 @@ export default function SuperAdminPanel({ onMenuClick }) {
         onAction={() => { fetchOverview(); if (activeTab === 'logs') fetchLogs(1); }}
       />
 
-      {/* Tabs — horizontally scrollable so all 6 tabs are always reachable */}
-      <div className="flex gap-1 mb-6 overflow-x-auto pb-1 scrollbar-none">
+      <GrafanaShell>
+      {/* Console header strip */}
+      <div className="flex items-center justify-between gap-3 px-1 pb-3 mb-1">
+        <div className="flex items-center gap-2 font-mono text-xs text-cyan-300/80">
+          <Icon icon="lucide:terminal" className="w-4 h-4" />
+          <span className="tracking-widest uppercase">productivo // ops console</span>
+        </div>
+        <LiveDot live={live} />
+      </div>
+
+      {/* Tabs — neon segmented bar, horizontally scrollable */}
+      <div className="flex gap-1 mb-4 overflow-x-auto pb-1 scrollbar-none">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl whitespace-nowrap transition-all duration-150 shrink-0
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-mono font-medium rounded-lg whitespace-nowrap transition-all duration-150 shrink-0 border
               ${activeTab === t.id
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 shadow-[0_0_18px_rgba(34,211,238,0.15)]'
+                : 'bg-white/[0.03] text-slate-400 border-white/5 hover:text-slate-200 hover:border-white/10'
               }
-              ${t.id === 'enquiries' ? 'border border-amber-300 dark:border-amber-700' : ''}
+              ${t.id === 'enquiries' ? 'ring-1 ring-amber-500/20' : ''}
             `}
           >
-            <Icon icon={t.icon} className="w-4 h-4" />
+            <Icon icon={t.icon} className="w-3.5 h-3.5" />
             {t.label}
           </button>
         ))}
@@ -213,159 +311,137 @@ export default function SuperAdminPanel({ onMenuClick }) {
         <>
           {/* OVERVIEW TAB */}
           {activeTab === 'overview' && overview && (
-            <div className="space-y-6">
-              {/* DB Stats */}
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Database</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-                  <StatCard label="Users" value={overview.db.users} icon="lucide:users" color="blue" />
-                  <StatCard label="Orgs" value={overview.db.organizations} icon="lucide:building-2" color="purple" />
-                  <StatCard label="Clients" value={overview.db.clients} icon="lucide:user-check" color="emerald" />
-                  <StatCard label="Projects" value={overview.db.projects} icon="lucide:folder" color="amber" />
-                  <StatCard label="Tasks" value={overview.db.tasks} icon="lucide:check-square" color="blue" />
-                  <StatCard label="Meetings" value={overview.db.meetings} icon="lucide:video" color="purple" />
-                  <StatCard label="Invoices" value={overview.db.invoices} icon="lucide:file-text" color="emerald" />
-                  <StatCard label="Enquiries" value={overview.db.enquiries} icon="mdi:email-newsletter" color="amber" sub={`${overview.enquiries?.new || 0} new`} />
-                </div>
+            <div className="space-y-4">
+              {/* DB readouts */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+                <GrafanaStat label="Users" value={(overview.db.users ?? 0).toLocaleString()} icon="lucide:users" accent="cyan" />
+                <GrafanaStat label="Orgs" value={(overview.db.organizations ?? 0).toLocaleString()} icon="lucide:building-2" accent="violet" />
+                <GrafanaStat label="Clients" value={(overview.db.clients ?? 0).toLocaleString()} icon="lucide:user-check" accent="green" />
+                <GrafanaStat label="Projects" value={(overview.db.projects ?? 0).toLocaleString()} icon="lucide:folder" accent="amber" />
+                <GrafanaStat label="Tasks" value={(overview.db.tasks ?? 0).toLocaleString()} icon="lucide:check-square" accent="blue" />
+                <GrafanaStat label="Meetings" value={(overview.db.meetings ?? 0).toLocaleString()} icon="lucide:video" accent="violet" />
+                <GrafanaStat label="Invoices" value={(overview.db.invoices ?? 0).toLocaleString()} icon="lucide:file-text" accent="green" />
+                <GrafanaStat label="Enquiries" value={(overview.db.enquiries ?? 0).toLocaleString()} icon="mdi:email-newsletter" accent="pink" sub={`${overview.enquiries?.new || 0} new`} />
               </div>
 
-              {/* API Stats */}
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Platform Activity (Today)</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <StatCard label="API Calls" value={overview.api.today} icon="lucide:activity" color="blue" />
-                  <StatCard label="Errors Today" value={overview.api.errorsToday} icon="lucide:alert-triangle" color="red" />
-                  <StatCard label="Emails Today" value={overview.email.today} icon="lucide:mail" color="emerald" />
-                  <StatCard label="WhatsApp Today" value={overview.whatsapp.today} icon="lucide:message-circle" color="purple" sub={`Limit: ${overview.whatsapp.dailyLimit}/day`} />
-                </div>
+              {/* Today's activity */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <GrafanaStat label="API calls · today" value={(overview.api.today ?? 0).toLocaleString()} icon="lucide:activity" accent="blue"
+                  spark={(overview.api.monthly || []).map((m) => m.api)} />
+                <GrafanaStat label="Errors · today" value={(overview.api.errorsToday ?? 0).toLocaleString()} icon="lucide:alert-triangle" accent="red" />
+                <GrafanaStat label="Emails · today" value={(overview.email.today ?? 0).toLocaleString()} icon="lucide:mail" accent="amber"
+                  spark={(overview.api.monthly || []).map((m) => m.emails)} />
+                <GrafanaStat label="WhatsApp · today" value={(overview.whatsapp.today ?? 0).toLocaleString()} icon="mdi:whatsapp" accent="green"
+                  sub={`limit ${overview.whatsapp.dailyLimit}/day`} spark={(overview.api.monthly || []).map((m) => m.whatsapp)} />
               </div>
 
-              {/* Monthly chart */}
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Monthly Volume (Last 6 Months)</h2>
-                <Card padding={false}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-gray-100 dark:border-gray-800">
-                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Month</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">API Calls</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Emails Sent</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">WhatsApp Sent</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                        {(overview.api.monthly || []).map((m, i) => (
-                          <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                            <td className="px-5 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{m.month}</td>
-                            <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400 text-right">{m.api?.toLocaleString()}</td>
-                            <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400 text-right">{m.emails?.toLocaleString()}</td>
-                            <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400 text-right">{m.whatsapp?.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Top endpoints */}
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Top Endpoints Today</h2>
-                <Card padding={false}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-gray-100 dark:border-gray-800">
-                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Endpoint</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Calls</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Avg ms</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                        {(overview.api.topEndpoints || []).map((ep, i) => (
-                          <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                            <td className="px-5 py-3 text-sm font-mono">
-                              <span className={`font-semibold mr-2 ${METHOD_COLORS[ep.method] || 'text-gray-600'}`}>{ep.method}</span>
-                              <span className="text-gray-700 dark:text-gray-300">{ep.path}</span>
-                            </td>
-                            <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400 text-right">{ep.count}</td>
-                            <td className="px-5 py-3 text-sm text-gray-500 text-right">{ep.avgMs}ms</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
+              {/* Monthly volume + top endpoints */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <GrafanaPanel title="Monthly volume · last 6 months" icon="lucide:bar-chart-3" accent="cyan">
+                  <GrafanaMultiBar
+                    data={overview.api.monthly || []}
+                    xKey="month"
+                    series={[
+                      { key: 'api', label: 'API', color: NEON.blue },
+                      { key: 'emails', label: 'Email', color: NEON.amber },
+                      { key: 'whatsapp', label: 'WhatsApp', color: NEON.green },
+                    ]}
+                  />
+                </GrafanaPanel>
+                <GrafanaPanel title="Top endpoints · today" icon="lucide:zap" accent="violet">
+                  {(overview.api.topEndpoints || []).length === 0 ? (
+                    <p className="text-xs text-slate-500 font-mono py-10 text-center">// no traffic yet today</p>
+                  ) : (
+                    <GrafanaBar
+                      data={(overview.api.topEndpoints || []).slice(0, 8).map((ep) => ({ name: `${ep.method} ${ep.path}`.slice(0, 24), count: ep.count }))}
+                      dataKey="count" nameKey="name" height={280}
+                    />
+                  )}
+                </GrafanaPanel>
               </div>
             </div>
           )}
 
           {/* DB USAGE TAB */}
-          {activeTab === 'db' && overview && (
-            <div className="space-y-6">
-              {/* MongoDB global stats */}
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Total DB Usage (All Clients)</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  <StatCard label="Collections" value={overview.db.native?.totalCollections} icon="lucide:layers" color="blue" />
-                  <StatCard label="Total Documents" value={overview.db.native?.totalDocuments} icon="lucide:file" color="purple" />
-                  <StatCard label="Data Size" value={overview.db.native?.dataSizeKB != null ? `${(overview.db.native.dataSizeKB / 1024).toFixed(1)} MB` : '—'} icon="lucide:hard-drive" color="emerald" />
-                  <StatCard label="Storage Size" value={overview.db.native?.storageSizeKB != null ? `${(overview.db.native.storageSizeKB / 1024).toFixed(1)} MB` : '—'} icon="lucide:database" color="amber" />
-                  <StatCard label="Index Size" value={overview.db.native?.indexSizeKB != null ? `${(overview.db.native.indexSizeKB / 1024).toFixed(1)} MB` : '—'} icon="lucide:search" color="blue" />
-                  <StatCard label="Avg Doc Size" value={overview.db.native?.avgObjSizeBytes != null ? `${overview.db.native.avgObjSizeBytes} B` : '—'} icon="lucide:ruler" color="purple" />
-                </div>
+          {activeTab === 'db' && overview && (() => {
+            const native = overview.db.native || {};
+            const cols = (overview.db.collections || []);
+            const topBySize = [...cols].sort((a, b) => (b.sizeKB || 0) - (a.sizeKB || 0)).slice(0, 10)
+              .map((c) => ({ name: c.name, kb: c.sizeKB || 0 }));
+            const docCounts = [
+              { name: 'Users', value: overview.db.users }, { name: 'Orgs', value: overview.db.organizations },
+              { name: 'Clients', value: overview.db.clients }, { name: 'Projects', value: overview.db.projects },
+              { name: 'Tasks', value: overview.db.tasks }, { name: 'Meetings', value: overview.db.meetings },
+              { name: 'Invoices', value: overview.db.invoices }, { name: 'Activity Logs', value: overview.db.activityLogs },
+            ].filter((d) => d.value != null);
+            const maxKb = Math.max(1, ...cols.map((c) => c.sizeKB || 0));
+            const fmtMB = (kb) => kb != null ? `${(kb / 1024).toFixed(1)}` : '—';
+            return (
+            <div className="space-y-4">
+              {/* Cluster-level readouts */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <GrafanaStat label="Collections" value={(native.totalCollections ?? 0).toLocaleString()} icon="lucide:layers" accent="cyan" />
+                <GrafanaStat label="Documents" value={(native.totalDocuments ?? 0).toLocaleString()} icon="lucide:file" accent="violet" />
+                <GrafanaStat label="Data Size" value={fmtMB(native.dataSizeKB)} unit="MB" icon="lucide:hard-drive" accent="green" />
+                <GrafanaStat label="Storage" value={fmtMB(native.storageSizeKB)} unit="MB" icon="lucide:database" accent="amber" />
+                <GrafanaStat label="Index Size" value={fmtMB(native.indexSizeKB)} unit="MB" icon="lucide:search" accent="blue" />
+                <GrafanaStat label="Avg Doc" value={(native.avgObjSizeBytes ?? 0).toLocaleString()} unit="B" icon="lucide:ruler" accent="pink" />
               </div>
 
-              {/* Document counts per model */}
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Document Counts</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <StatCard label="Users" value={overview.db.users} icon="lucide:users" color="blue" />
-                  <StatCard label="Organizations" value={overview.db.organizations} icon="lucide:building-2" color="purple" />
-                  <StatCard label="Clients" value={overview.db.clients} icon="lucide:user-check" color="emerald" />
-                  <StatCard label="Projects" value={overview.db.projects} icon="lucide:folder" color="amber" />
-                  <StatCard label="Tasks" value={overview.db.tasks} icon="lucide:check-square" color="blue" />
-                  <StatCard label="Meetings" value={overview.db.meetings} icon="lucide:video" color="purple" />
-                  <StatCard label="Invoices" value={overview.db.invoices} icon="lucide:file-text" color="emerald" />
-                  <StatCard label="Activity Logs" value={overview.db.activityLogs} icon="lucide:scroll-text" color="amber" />
-                </div>
+              {/* Charts row */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <GrafanaPanel title="Top collections by data size" icon="lucide:hard-drive" accent="cyan" className="lg:col-span-2">
+                  <GrafanaBar data={topBySize} dataKey="kb" nameKey="name" unit=" KB" height={320} />
+                </GrafanaPanel>
+                <GrafanaPanel title="Document distribution" icon="lucide:pie-chart" accent="violet">
+                  <GrafanaDonut data={docCounts} height={320} />
+                </GrafanaPanel>
               </div>
 
-              {/* Per-collection stats table */}
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Per-Collection Stats</h2>
-                <Card padding={false}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-gray-100 dark:border-gray-800">
-                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Collection</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Documents</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Data (KB)</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Avg Doc (B)</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Index (KB)</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-5 py-3">Indexes</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                        {(overview.db.collections || []).map((col) => (
-                          <tr key={col.name} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                            <td className="px-5 py-3 text-sm font-mono font-medium text-gray-900 dark:text-gray-100">{col.name}</td>
-                            <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400 text-right">{col.count?.toLocaleString()}</td>
-                            <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400 text-right">{col.sizeKB?.toLocaleString()}</td>
-                            <td className="px-5 py-3 text-sm text-gray-500 text-right">{col.avgObjSizeBytes}</td>
-                            <td className="px-5 py-3 text-sm text-gray-500 text-right">{col.totalIndexSizeKB?.toLocaleString()}</td>
-                            <td className="px-5 py-3 text-sm text-gray-500 text-right">{col.indexes}</td>
+              {/* Per-collection table — terminal style with inline size bars */}
+              <GrafanaPanel title="Per-collection stats" icon="lucide:table" accent="green" dense
+                right={<span className="text-[10px] font-mono text-slate-500">{cols.length} collections</span>}>
+                <div className="overflow-x-auto">
+                  <table className="w-full font-mono text-xs">
+                    <thead>
+                      <tr className="text-slate-500 border-b border-white/5">
+                        <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">Collection</th>
+                        <th className="text-right font-medium uppercase tracking-wider px-4 py-2.5">Docs</th>
+                        <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5 w-[28%]">Data (KB)</th>
+                        <th className="text-right font-medium uppercase tracking-wider px-4 py-2.5">Avg (B)</th>
+                        <th className="text-right font-medium uppercase tracking-wider px-4 py-2.5">Idx (KB)</th>
+                        <th className="text-right font-medium uppercase tracking-wider px-4 py-2.5">Idx</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cols.map((col, i) => {
+                        const c = SERIES_COLORS[i % SERIES_COLORS.length];
+                        const pct = Math.max(2, Math.round(((col.sizeKB || 0) / maxKb) * 100));
+                        return (
+                          <tr key={col.name} className="border-b border-white/[0.03] hover:bg-white/[0.03] transition-colors">
+                            <td className="px-4 py-2 text-cyan-300/90 whitespace-nowrap">{col.name}</td>
+                            <td className="px-4 py-2 text-slate-300 text-right tabular-nums">{col.count?.toLocaleString()}</td>
+                            <td className="px-4 py-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden min-w-[60px]">
+                                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: c, boxShadow: `0 0 8px ${c}99` }} />
+                                </div>
+                                <span className="text-slate-400 tabular-nums w-14 text-right">{col.sizeKB?.toLocaleString()}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2 text-slate-500 text-right tabular-nums">{col.avgObjSizeBytes}</td>
+                            <td className="px-4 py-2 text-slate-500 text-right tabular-nums">{col.totalIndexSizeKB?.toLocaleString()}</td>
+                            <td className="px-4 py-2 text-slate-500 text-right tabular-nums">{col.indexes}</td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              </div>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </GrafanaPanel>
             </div>
-          )}
+            );
+          })()}
 
           {/* USAGE TAB */}
           {activeTab === 'usage' && overview && (
@@ -571,118 +647,147 @@ export default function SuperAdminPanel({ onMenuClick }) {
 
           {/* LOGS TAB */}
           {activeTab === 'logs' && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-3">
-                <Select
-                  value={logType}
-                  onChange={(e) => setLogType(e.target.value)}
-                  options={[
-                    { value: 'api', label: 'API Requests' },
-                    { value: 'email', label: 'Emails' },
-                    { value: 'whatsapp', label: 'WhatsApp' },
-                  ]}
-                />
-                <Select
-                  value={logSuccess}
-                  onChange={(e) => setLogSuccess(e.target.value)}
-                  placeholder="All"
-                  options={[
-                    { value: '', label: 'All' },
-                    { value: 'true', label: 'Success' },
-                    { value: 'false', label: 'Failed' },
-                  ]}
-                />
-                <span className="text-xs text-gray-400 self-center">{logPagination.total} total</span>
-              </div>
-
-              <Card padding={false}>
-                {loadingLogs ? (
-                  <div className="py-16 flex justify-center"><Spinner /></div>
-                ) : logs.length === 0 ? (
-                  <div className="py-16 text-center text-gray-400 dark:text-gray-500 text-sm">No logs found</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-gray-100 dark:border-gray-800">
-                          <th className="text-left font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Time</th>
-                          {logType === 'api' && <>
-                            <th className="text-left font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Method</th>
-                            <th className="text-left font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Path</th>
-                            <th className="text-left font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Status</th>
-                            <th className="text-left font-medium text-gray-500 uppercase tracking-wider px-4 py-3">User</th>
-                            <th className="text-right font-medium text-gray-500 uppercase tracking-wider px-4 py-3">ms</th>
-                          </>}
-                          {logType !== 'api' && <>
-                            <th className="text-left font-medium text-gray-500 uppercase tracking-wider px-4 py-3">To</th>
-                            <th className="text-left font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Subject</th>
-                            <th className="text-left font-medium text-gray-500 uppercase tracking-wider px-4 py-3">Status</th>
-                          </>}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                        {logs.map((log) => (
-                          <tr key={log._id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${!log.success ? 'bg-red-50/50 dark:bg-red-900/5' : ''}`}>
-                            <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
-                              {log.createdAt ? format(parseISO(log.createdAt), 'MMM d HH:mm:ss') : '—'}
-                            </td>
-                            {logType === 'api' && <>
-                              <td className="px-4 py-2.5">
-                                <span className={`font-semibold ${METHOD_COLORS[log.method] || 'text-gray-600'}`}>{log.method}</span>
-                              </td>
-                              <td className="px-4 py-2.5 font-mono text-gray-700 dark:text-gray-300 max-w-xs truncate">{log.path}</td>
-                              <td className="px-4 py-2.5">
-                                <span className={`font-medium ${
-                                  log.statusCode >= 500 ? 'text-red-600' :
-                                  log.statusCode >= 400 ? 'text-amber-600' :
-                                  'text-emerald-600'
-                                }`}>{log.statusCode}</span>
-                              </td>
-                              <td className="px-4 py-2.5 text-gray-500 truncate max-w-[120px]">{log.userEmail || '—'}</td>
-                              <td className="px-4 py-2.5 text-gray-400 text-right">{log.durationMs ?? '—'}</td>
-                            </>}
-                            {logType !== 'api' && <>
-                              <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{log.to || '—'}</td>
-                              <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400 max-w-xs truncate">{log.subject || '—'}</td>
-                              <td className="px-4 py-2.5">
-                                {log.success
-                                  ? <span className="text-emerald-600 font-medium">Sent</span>
-                                  : <span className="text-red-500 font-medium" title={log.errorMsg}>Failed</span>
-                                }
-                              </td>
-                            </>}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            <GrafanaPanel
+              title={`Activity stream · ${logType}`}
+              icon="lucide:scroll-text"
+              accent="cyan"
+              dense
+              right={
+                <div className="flex items-center gap-2">
+                  {/* type chips */}
+                  <div className="flex items-center gap-1">
+                    {[{ v: 'api', l: 'API' }, { v: 'email', l: 'Email' }, { v: 'whatsapp', l: 'WhatsApp' }].map((o) => (
+                      <button key={o.v} onClick={() => setLogType(o.v)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border transition-colors ${
+                          logType === o.v ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40' : 'bg-white/[0.03] text-slate-400 border-white/5 hover:text-slate-200'
+                        }`}>{o.l}</button>
+                    ))}
                   </div>
-                )}
-
-                {logPagination.pages > 1 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-800">
-                    <span className="text-xs text-gray-500">
-                      Page {logPagination.page} of {logPagination.pages}
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => fetchLogs(logPagination.page - 1)}
-                        disabled={logPagination.page <= 1}
-                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40"
-                      >
-                        Previous
-                      </button>
-                      <button
-                        onClick={() => fetchLogs(logPagination.page + 1)}
-                        disabled={logPagination.page >= logPagination.pages}
-                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40"
-                      >
-                        Next
-                      </button>
+                  <span className="w-px h-4 bg-white/10" />
+                  {/* status chips */}
+                  <div className="flex items-center gap-1">
+                    {[{ v: '', l: 'All' }, { v: 'true', l: 'OK' }, { v: 'false', l: 'Err' }].map((o) => (
+                      <button key={o.v || 'all'} onClick={() => setLogSuccess(o.v)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border transition-colors ${
+                          logSuccess === o.v ? 'bg-violet-500/15 text-violet-300 border-violet-500/40' : 'bg-white/[0.03] text-slate-400 border-white/5 hover:text-slate-200'
+                        }`}>{o.l}</button>
+                    ))}
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-500 ml-1">{logPagination.total} rows</span>
+                </div>
+              }
+            >
+              {/* Graphical summary of the loaded page */}
+              {!loadingLogs && logs.length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 p-3.5 border-b border-white/5">
+                  <div className="lg:col-span-2 rounded-lg bg-white/[0.02] border border-white/5 p-2">
+                    <div className="flex items-center justify-between px-1 pb-1">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Requests over time</span>
+                      <span className="text-[10px] font-mono text-slate-500">avg {logStats.avgMs}ms · max {logStats.maxMs}ms</span>
+                    </div>
+                    <div className="h-28">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={logStats.volume} margin={{ top: 4, right: 6, left: -24, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="lv" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={NEON.cyan} stopOpacity={0.5} />
+                              <stop offset="100%" stopColor={NEON.cyan} stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="2 4" stroke="#94a3b8" strokeOpacity={0.08} vertical={false} />
+                          <XAxis dataKey="min" tick={{ fontSize: 9, fill: '#64748b', fontFamily: 'monospace' }} stroke="#334155" interval="preserveStartEnd" minTickGap={24} />
+                          <YAxis tick={{ fontSize: 9, fill: '#64748b', fontFamily: 'monospace' }} stroke="#334155" allowDecimals={false} width={32} />
+                          <Tooltip contentStyle={grafanaTooltip} cursor={{ stroke: '#94a3b8', strokeOpacity: 0.2 }} />
+                          <Area type="monotone" dataKey="count" stroke={NEON.cyan} strokeWidth={1.5} fill="url(#lv)" isAnimationActive={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
-                )}
-              </Card>
-            </div>
+                  <div className="rounded-lg bg-white/[0.02] border border-white/5 p-2">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-1">{logType === 'api' ? 'Status codes' : 'Delivery'}</span>
+                    <div className="h-28">
+                      <GrafanaDonut data={logType === 'api' ? logStats.statusDonut : logStats.okErrDonut} height={112} />
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-white/[0.02] border border-white/5 p-2">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-1">{logType === 'api' ? 'Methods' : 'OK vs Error'}</span>
+                    <div className="h-28">
+                      {logType === 'api'
+                        ? <GrafanaBar data={logStats.methodBars} dataKey="count" nameKey="name" height={112} />
+                        : <GrafanaDonut data={logStats.okErrDonut} height={112} />}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {loadingLogs ? (
+                <div className="py-16 flex justify-center"><Spinner /></div>
+              ) : logs.length === 0 ? (
+                <div className="py-16 text-center text-slate-500 text-xs font-mono">// no logs found</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs font-mono">
+                    <thead>
+                      <tr className="border-b border-white/5 text-slate-500">
+                        <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">Time</th>
+                        {logType === 'api' ? <>
+                          <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">Method</th>
+                          <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">Path</th>
+                          <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">Status</th>
+                          <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">User</th>
+                          <th className="text-right font-medium uppercase tracking-wider px-4 py-2.5">ms</th>
+                        </> : <>
+                          <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">To</th>
+                          <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">Subject</th>
+                          <th className="text-left font-medium uppercase tracking-wider px-4 py-2.5">Status</th>
+                        </>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {logs.map((log) => (
+                        <tr key={log._id} className={`border-b border-white/[0.03] hover:bg-white/[0.03] transition-colors ${!log.success ? 'bg-rose-500/[0.04]' : ''}`}>
+                          <td className="px-4 py-2 text-slate-500 whitespace-nowrap">
+                            {log.createdAt ? format(parseISO(log.createdAt), 'MMM d HH:mm:ss') : '—'}
+                          </td>
+                          {logType === 'api' ? <>
+                            <td className="px-4 py-2">
+                              <span className={`font-semibold ${METHOD_COLORS[log.method] || 'text-slate-400'}`}>{log.method}</span>
+                            </td>
+                            <td className="px-4 py-2 text-slate-300 max-w-xs truncate">{log.path}</td>
+                            <td className="px-4 py-2">
+                              <span className={`font-medium ${
+                                log.statusCode >= 500 ? 'text-rose-400' : log.statusCode >= 400 ? 'text-amber-400' : 'text-emerald-400'
+                              }`}>{log.statusCode}</span>
+                            </td>
+                            <td className="px-4 py-2 text-slate-500 truncate max-w-[120px]">{log.userEmail || '—'}</td>
+                            <td className="px-4 py-2 text-slate-500 text-right tabular-nums">{log.durationMs ?? '—'}</td>
+                          </> : <>
+                            <td className="px-4 py-2 text-slate-300">{log.to || '—'}</td>
+                            <td className="px-4 py-2 text-slate-400 max-w-xs truncate">{log.subject || '—'}</td>
+                            <td className="px-4 py-2">
+                              {log.success
+                                ? <span className="text-emerald-400 font-medium">Sent</span>
+                                : <span className="text-rose-400 font-medium" title={log.errorMsg}>Failed</span>}
+                            </td>
+                          </>}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {logPagination.pages > 1 && (
+                <div className="flex items-center justify-between px-4 py-2.5 border-t border-white/5">
+                  <span className="text-[10px] text-slate-500 font-mono">page {logPagination.page} / {logPagination.pages}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => fetchLogs(logPagination.page - 1)} disabled={logPagination.page <= 1}
+                      className="text-[10px] font-mono px-3 py-1 rounded border border-white/10 text-slate-300 hover:bg-white/5 disabled:opacity-40">prev</button>
+                    <button onClick={() => fetchLogs(logPagination.page + 1)} disabled={logPagination.page >= logPagination.pages}
+                      className="text-[10px] font-mono px-3 py-1 rounded border border-white/10 text-slate-300 hover:bg-white/5 disabled:opacity-40">next</button>
+                  </div>
+                </div>
+              )}
+            </GrafanaPanel>
           )}
 
           {/* ENQUIRIES TAB */}
@@ -806,6 +911,19 @@ export default function SuperAdminPanel({ onMenuClick }) {
                 />
                 {payments?.pagination && (
                   <span className="text-xs text-gray-400 self-center">{payments.pagination.total} total</span>
+                )}
+                {/* Bulk cleanup — only enabled when there's something to remove */}
+                {!!((payments?.summary?.pending || 0) + (payments?.summary?.failed || 0)) && (
+                  <button
+                    onClick={handleDeleteTxns}
+                    disabled={deletingTxns}
+                    className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium font-mono text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 disabled:opacity-50 transition-colors"
+                  >
+                    {deletingTxns
+                      ? <Icon icon="lucide:loader-2" className="w-3.5 h-3.5 animate-spin" />
+                      : <Icon icon="lucide:trash-2" className="w-3.5 h-3.5" />}
+                    Purge {(payments.summary.pending || 0) + (payments.summary.failed || 0)} pending + failed
+                  </button>
                 )}
               </div>
 
@@ -1097,6 +1215,7 @@ export default function SuperAdminPanel({ onMenuClick }) {
           )}
         </>
       )}
+      </GrafanaShell>
     </div>
   );
 }

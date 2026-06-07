@@ -239,9 +239,10 @@ function ProductOwnerDashboard({ onMenuClick }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: 'Superadmin Accounts', icon: 'lucide:shield-check', path: '/users', color: 'text-blue-600 dark:text-blue-400' },
-            { label: 'Feature Flags', icon: 'lucide:toggle-right', path: '/feature-flags', color: 'text-purple-600 dark:text-purple-400' },
-            { label: 'Activity Logs', icon: 'lucide:scroll-text', path: '/logs', color: 'text-gray-600 dark:text-gray-400' },
-            { label: 'Payments', icon: 'lucide:credit-card', path: '/payments', color: 'text-emerald-600 dark:text-emerald-400' },
+            // Feature Flags / Activity Logs / Payments are tabs inside the Super Admin panel.
+            { label: 'Feature Flags', icon: 'lucide:toggle-right', path: '/superadmin?tab=features', color: 'text-purple-600 dark:text-purple-400' },
+            { label: 'Activity Logs', icon: 'lucide:scroll-text', path: '/superadmin?tab=logs', color: 'text-gray-600 dark:text-gray-400' },
+            { label: 'Payments', icon: 'lucide:credit-card', path: '/superadmin?tab=payments', color: 'text-emerald-600 dark:text-emerald-400' },
           ].map((a) => (
             <button key={a.path} onClick={() => navigate(a.path)}
               className="flex items-center gap-3 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-sm transition-all duration-150">
